@@ -131,50 +131,7 @@ impl Backend {
             mouse_closures.push(onmouseup);
         }
         
-        {
-            let event_buffer = event_buffer.clone();
-            let ontouchstart = Closure::wrap(Box::new(move |e: TouchEvent| {
-                let touch = e.touches().item(0).unwrap();
-                let position = Vec2::new(touch.client_x() as usize, touch.client_y() as usize);
-                event_buffer.borrow_mut().push(Event::Mouse {
-                    offset: Vec2::new(0, 0),
-                    position,
-                    event: CursiveMouseEvent::Press(MouseButton::Left),
-                });
-            }) as Box<dyn Fn(MouseEvent)>);
-            canvas.set_onmouseup(Some(onmouseup.as_ref().unchecked_ref()));
-
-            mouse_closures.push(onmouseup);
-        }
         
-        {
-            let event_buffer = event_buffer.clone();
-            let onmouseup = Closure::wrap(Box::new(move |e: MouseEvent| {
-                event_buffer.borrow_mut().push(Event::Mouse {
-                    offset: Vec2::new(0, 0),
-                    position: Vec2::new(e.x() as usize, e.y() as usize),
-                    event: CursiveMouseEvent::Release(get_mouse_botton(&e)),
-                });
-            }) as Box<dyn Fn(MouseEvent)>);
-            canvas.set_onmouseup(Some(onmouseup.as_ref().unchecked_ref()));
-
-            mouse_closures.push(onmouseup);
-        }
-        
-        {
-            let event_buffer = event_buffer.clone();
-            let onmouseup = Closure::wrap(Box::new(move |e: MouseEvent| {
-                event_buffer.borrow_mut().push(Event::Mouse {
-                    offset: Vec2::new(0, 0),
-                    position: Vec2::new(e.x() as usize, e.y() as usize),
-                    event: CursiveMouseEvent::Release(get_mouse_botton(&e)),
-                });
-            }) as Box<dyn Fn(MouseEvent)>);
-            canvas.set_onmouseup(Some(onmouseup.as_ref().unchecked_ref()));
-
-            mouse_closures.push(onmouseup);
-        }
-
         {
             let event_buffer = event_buffer.clone();
             let onkeydown = Closure::wrap(Box::new(move |e: KeyboardEvent| {
