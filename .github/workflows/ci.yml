@@ -1,0 +1,22 @@
+name: ci
+
+on:
+  push:
+    paths:
+      - .github/workflows/ci.yml
+      - src/**
+      - Cargo.toml
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Setup wasm
+      run: rustup target add wasm32-unknown-unknown
+    - name: Build
+      run: cargo build --verbose --target wasm32-unknown-unknown
+    - name: Run tests
+      run: cargo test --verbose --target wasm32-unknown-unknown
