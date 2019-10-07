@@ -33,3 +33,5 @@ features = [
     "KeyboardEvent",
 ]
 
+[dev-dependencies]
+wasm-bindgen-test = "0.2"
