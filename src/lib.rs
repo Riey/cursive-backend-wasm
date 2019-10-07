@@ -8,7 +8,8 @@ use unicode_width::UnicodeWidthStr;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
-    window, CanvasRenderingContext2d, ContextAttributes2d, HtmlCanvasElement, HtmlSpanElement, MouseEvent, TouchEvent, KeyboardEvent,
+    window, CanvasRenderingContext2d, ContextAttributes2d, HtmlCanvasElement, HtmlSpanElement,
+    KeyboardEvent, MouseEvent, TouchEvent,
 };
 
 struct ColorCache {
@@ -116,7 +117,7 @@ impl Backend {
 
             mouse_closures.push(onmousehold);
         }
-        
+
         {
             let event_buffer = event_buffer.clone();
             let onmouseup = Closure::wrap(Box::new(move |e: MouseEvent| {
@@ -130,8 +131,7 @@ impl Backend {
 
             mouse_closures.push(onmouseup);
         }
-        
-        
+
         {
             let event_buffer = event_buffer.clone();
             let onkeydown = Closure::wrap(Box::new(move |e: KeyboardEvent| {
@@ -232,7 +232,7 @@ impl backend::Backend for Backend {
     fn screen_size(&self) -> Vec2 {
         Vec2::new(
             self.canvas.width() as usize / self.font_width,
-            self.canvas.height() as usize / self.font_height
+            self.canvas.height() as usize / self.font_height,
         )
     }
 
