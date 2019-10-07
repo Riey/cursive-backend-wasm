@@ -1,0 +1,34 @@
+[package]
+name = "cursive-backend-wasm"
+version = "0.1.0"
+authors = ["Riey <creeper844@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cursive = { git = "https://github.com/gyscos/cursive", default-features = false }
+wasm-bindgen = "0.2.51"
+js-sys = "0.3.28"
+unicode-width = "0.1.6"
+
+[dependencies.web-sys]
+version = "0.3.28"
+features = [
+    "Window",
+    "Document",
+    "Node",
+    "Element",
+    "HtmlElement",
+    "HtmlCanvasElement",
+    "HtmlSpanElement",
+    "CssStyleDeclaration",
+    "CanvasRenderingContext2d",
+    "ContextAttributes2d",
+    "MouseEvent",
+    "TouchEvent",
+    "TouchList",
+    "Touch",
+    "KeyboardEvent",
+]
+
