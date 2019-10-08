@@ -8,7 +8,7 @@ edition = "2018"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-cursive = { git = "https://github.com/gyscos/cursive", default-features = false }
+cursive = { git = "https://github.com/Riey/cursive", branch = "wasm", default-features = false }
 wasm-bindgen = "0.2.51"
 js-sys = "0.3.28"
 unicode-width = "0.1.6"

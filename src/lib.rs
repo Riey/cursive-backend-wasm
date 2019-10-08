@@ -76,7 +76,7 @@ impl Backend {
 
         let mut closures = Vec::with_capacity(1);
         let mut mouse_closures = Vec::with_capacity(3);
-        let mut touch_closures = Vec::with_capacity(3);
+        let touch_closures = Vec::with_capacity(3);
         let mut keyboard_closures = Vec::with_capacity(1);
         let event_buffer = Rc::new(RefCell::new(Vec::with_capacity(300)));
 
@@ -318,3 +318,4 @@ fn color_to_html(color: Color) -> String {
         }
     }
 }
+
