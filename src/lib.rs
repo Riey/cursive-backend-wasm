@@ -7,8 +7,8 @@ use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
-    window, Document, HtmlDivElement, HtmlSpanElement, HtmlInputElement,
-    KeyboardEvent, MouseEvent, TouchEvent,
+    window, Document, EventTarget, HtmlDivElement, HtmlSpanElement, HtmlInputElement,
+    CompositionEvent, KeyboardEvent, MouseEvent, TouchEvent,
 };
 
 struct ColorCache {
@@ -41,6 +41,7 @@ pub struct Backend {
     _mouse_closures: Vec<Closure<dyn Fn(MouseEvent)>>,
     _touch_closures: Vec<Closure<dyn Fn(TouchEvent)>>,
     _keyboard_closures: Vec<Closure<dyn Fn(KeyboardEvent)>>,
+    _composition_closures: Vec<Closure<dyn Fn(CompositionEvent)>>,
 }
 
 impl Backend {
@@ -59,6 +60,7 @@ impl Backend {
 
         let input: HtmlInputElement = document.create_element("input")?.unchecked_into();
         console.append_child(&input)?;
+        input.set_autofocus(true);
         input.style().set_property("position", "relative")?;
         input.style().set_property("top", "0px")?;
         input.style().set_property("left", "0px")?;
@@ -73,6 +75,7 @@ impl Backend {
         let mut mouse_closures = Vec::with_capacity(3);
         let touch_closures = Vec::with_capacity(3);
         let mut keyboard_closures = Vec::with_capacity(1);
+        let mut composition_closures = Vec::with_capacity(1);
         let event_buffer = Rc::new(RefCell::new(Vec::with_capacity(300)));
         let hold_start = Rc::new(Cell::new(false));
 
@@ -137,35 +140,51 @@ impl Backend {
         {
             let event_buffer = event_buffer.clone();
             let onkeydown = Closure::wrap(Box::new(move |e: KeyboardEvent| {
-                web_sys::console::log_1(&format!("keydown key: {}", e.key()).into());
                 let key_str = e.key();
-                let key = match key_str.as_str() {
-                    "Backspace" => Some(Key::Backspace),
-                    "Tab" => Some(Key::Tab),
-                    "Enter" => Some(Key::Enter),
-                    "Esc" => Some(Key::Esc),
-                    "Insert" => Some(Key::Ins),
-                    "Delete" => Some(Key::Del),
-                    "ArrowDown" => Some(Key::Down),
-                    "ArrowUp" => Some(Key::Up),
-                    "ArrowLeft" => Some(Key::Left),
-                    "ArrowRight" => Some(Key::Right),
+                web_sys::console::log_1(&format!("keydown key: {}", key_str).into());
+                let key_str = key_str.as_bytes();
+                let key = match key_str {
+                    b"Backspace" => Some(Key::Backspace),
+                    b"Tab" => Some(Key::Tab),
+                    b"Enter" => Some(Key::Enter),
+                    b"Esc" => Some(Key::Esc),
+                    b"Insert" => Some(Key::Ins),
+                    b"Delete" => Some(Key::Del),
+                    b"ArrowDown" => Some(Key::Down),
+                    b"ArrowUp" => Some(Key::Up),
+                    b"ArrowLeft" => Some(Key::Left),
+                    b"ArrowRight" => Some(Key::Right),
+                    b"Process" => return,
                     _ => None,
                 };
 
                 if let Some(key) = key {
                     //TODO: alt ctrl shift meta
                     event_buffer.borrow_mut().push(Event::Key(key));
-                } else {
-                    for ch in key_str.chars() {
-                        web_sys::console::log_1(&format!("keydown Char({})", ch).into());
-                        event_buffer.borrow_mut().push(Event::Char(ch));
-                    }
+                } else if key_str.len() == 1 {
+                    event_buffer.borrow_mut().push(Event::Char(key_str[0] as char));
                 };
             }) as Box<dyn Fn(KeyboardEvent)>);
             input.set_onkeydown(Some(onkeydown.as_ref().unchecked_ref()));
 
             keyboard_closures.push(onkeydown);
+        }
+
+        {
+            let target: &EventTarget = input.as_ref();
+            let event_buffer = event_buffer.clone();
+            let oncompositionend = Closure::wrap(Box::new(move |e: CompositionEvent| {
+                let data = e.data().unwrap();
+                web_sys::console::log_1(&format!("compositionend data: {}", data).into());
+
+                let mut event_buffer = event_buffer.borrow_mut();
+                for ch in data.chars() {
+                    event_buffer.push(Event::Char(ch));
+                }
+            }) as Box<dyn Fn(CompositionEvent)>);
+            target.add_event_listener_with_callback("compositionend", oncompositionend.as_ref().unchecked_ref())?;
+
+            composition_closures.push(oncompositionend);
         }
 
         Ok(Box::new(Self {
@@ -185,6 +204,7 @@ impl Backend {
             _mouse_closures: mouse_closures,
             _touch_closures: touch_closures,
             _keyboard_closures: keyboard_closures,
+            _composition_closures: composition_closures,
         }))
     }
 
@@ -207,12 +227,16 @@ impl backend::Backend for Backend {
         self.clear_with(&color_to_html(color));
     }
 
-    fn print_at(&self, pos: Vec2, text: &str) {
+    fn print_at(&self, pos: Vec2, mut text: &str) {
+
+        // Don't need
+        if text == " " {
+            return;
+        }
+
         let color_cache = self.color_cache.borrow();
         let x = pos.x * self.font_width;
         let y = pos.y * self.font_height;
-
-        web_sys::console::log_1(&format!("print_at size: {}", text.len()).into());
 
         let span: HtmlSpanElement = self.document.create_element("span").expect("create_element").unchecked_into();
         span.style().set_property("position", "absolute").unwrap();
