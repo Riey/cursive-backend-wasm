@@ -7,7 +7,7 @@ use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
-    window, Document, HtmlDivElement, HtmlSpanElement,
+    window, Document, HtmlDivElement, HtmlSpanElement, HtmlInputElement,
     KeyboardEvent, MouseEvent, TouchEvent,
 };
 
@@ -34,6 +34,7 @@ pub struct Backend {
     font_width: usize,
     font_height: usize,
     console: HtmlDivElement,
+    input: HtmlInputElement,
     document: Document,
 
     _closures: Vec<Closure<dyn Fn()>>,
@@ -50,13 +51,23 @@ impl Backend {
         let document = window.document().ok_or("Document isn't exist")?;
 
         let temp: HtmlSpanElement = document.create_element("span")?.unchecked_into();
-
         temp.set_inner_text("\u{2588}");
-
-        console.append_child(&temp)?;
+        console.append_child(&temp);
         let width = temp.offset_width() as usize;
         let height = temp.offset_height() as usize;
-        console.remove_child(&temp)?;
+        console.remove_child(&temp);
+
+        let input: HtmlInputElement = document.create_element("input")?.unchecked_into();
+        console.append_child(&input)?;
+        input.style().set_property("position", "relative")?;
+        input.style().set_property("top", "0px")?;
+        input.style().set_property("left", "0px")?;
+        input.style().set_property("border", "none")?;
+        input.style().set_property("width", "100%")?;
+        input.style().set_property("height", "100%")?;
+        input.style().set_property("opacity", "0")?;
+        input.style().set_property("padding", "0px")?;
+        input.style().set_property("pointerEvents", "none")?;
 
         let mut closures = Vec::with_capacity(1);
         let mut mouse_closures = Vec::with_capacity(3);
@@ -119,6 +130,7 @@ impl Backend {
         {
             let event_buffer = event_buffer.clone();
             let onkeydown = Closure::wrap(Box::new(move |e: KeyboardEvent| {
+                web_sys::console::log_1(&format!("keydown key: {}", e.key()).into());
                 let key_str = e.key();
                 let key = match key_str.as_str() {
                     "Backspace" => Some(Key::Backspace),
@@ -139,11 +151,12 @@ impl Backend {
                     event_buffer.borrow_mut().push(Event::Key(key));
                 } else {
                     for ch in key_str.chars() {
+                        web_sys::console::log_1(&format!("keydown Char({})", ch).into());
                         event_buffer.borrow_mut().push(Event::Char(ch));
                     }
                 };
             }) as Box<dyn Fn(KeyboardEvent)>);
-            console.set_onkeydown(Some(onkeydown.as_ref().unchecked_ref()));
+            input.set_onkeydown(Some(onkeydown.as_ref().unchecked_ref()));
 
             keyboard_closures.push(onkeydown);
         }
@@ -151,6 +164,7 @@ impl Backend {
         Ok(Box::new(Self {
             document,
             console,
+            input,
             font_width: width,
             font_height: height,
             event_buffer,
@@ -171,8 +185,8 @@ impl Backend {
     fn clear_with(&self, color: &str) {
         self.console.style().set_property("background-color", color).unwrap();
 
-        while let Some(child) = self.console.first_child() {
-            self.console.remove_child(&child).unwrap();
+        while self.console.child_element_count() > 1 {
+            self.console.remove_child(&self.console.last_child().unwrap()).unwrap();
         }
     }
 }
@@ -187,6 +201,7 @@ impl backend::Backend for Backend {
     }
 
     fn print_at(&self, pos: Vec2, text: &str) {
+        web_sys::console::log_1(&"print_at".into());
         let color_cache = self.color_cache.borrow();
         let x = pos.x * self.font_width;
         let y = pos.y * self.font_height;
