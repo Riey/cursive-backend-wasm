@@ -4,24 +4,23 @@ use cursive::theme::{BaseColor, Color, ColorPair, Effect};
 use cursive::Vec2;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use unicode_width::UnicodeWidthStr;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
-    window, CanvasRenderingContext2d, ContextAttributes2d, HtmlCanvasElement, HtmlSpanElement,
+    window, Document, HtmlDivElement, HtmlSpanElement,
     KeyboardEvent, MouseEvent, TouchEvent,
 };
 
 struct ColorCache {
-    color: JsValue,
-    bg_color: JsValue,
+    color: String,
+    bg_color: String,
 }
 
 impl Default for ColorCache {
     fn default() -> Self {
         Self {
-            color: JsValue::UNDEFINED,
-            bg_color: JsValue::UNDEFINED,
+            color: "".into(),
+            bg_color: "".into(),
         }
     }
 }
@@ -32,11 +31,10 @@ pub struct Backend {
     color_cache: RefCell<ColorCache>,
     effect: Cell<Effect>,
 
-    line_height: f64,
     font_width: usize,
     font_height: usize,
-    canvas: HtmlCanvasElement,
-    ctx: CanvasRenderingContext2d,
+    console: HtmlDivElement,
+    document: Document,
 
     _closures: Vec<Closure<dyn Fn()>>,
     _mouse_closures: Vec<Closure<dyn Fn(MouseEvent)>>,
@@ -46,33 +44,19 @@ pub struct Backend {
 
 impl Backend {
     pub fn init(
-        canvas: HtmlCanvasElement,
-        font: &str,
+        console: HtmlDivElement,
     ) -> Result<Box<dyn backend::Backend>, JsValue> {
-        // Using measure_text when can calculate height from TextMetrics
-        let document = window()
-            .ok_or("Window isn't exist")?
-            .document()
-            .ok_or("Document isn't exist")?;
-        let temp: HtmlSpanElement = document.create_element("span")?.dyn_into()?;
+        let window = window().ok_or("Window isn't exist")?;
+        let document = window.document().ok_or("Document isn't exist")?;
 
-        temp.style().set_property("font", font)?;
+        let temp: HtmlSpanElement = document.create_element("span")?.unchecked_into();
+
         temp.set_inner_text("\u{2588}");
 
-        canvas.append_child(&temp)?;
+        console.append_child(&temp)?;
         let width = temp.offset_width() as usize;
         let height = temp.offset_height() as usize;
-        canvas.remove_child(&temp)?;
-
-        let ctx: CanvasRenderingContext2d = canvas
-            .get_context_with_context_options(
-                "2d",
-                ContextAttributes2d::new().alpha(false).as_ref(),
-            )?
-            .ok_or("Can't get CanvasRenderingContext2d")?
-            .dyn_into()?;
-
-        ctx.set_font(font);
+        console.remove_child(&temp)?;
 
         let mut closures = Vec::with_capacity(1);
         let mut mouse_closures = Vec::with_capacity(3);
@@ -85,7 +69,7 @@ impl Backend {
             let onresize = Closure::wrap(Box::new(move || {
                 event_buffer.borrow_mut().push(Event::WindowResize);
             }) as Box<dyn Fn()>);
-            canvas.set_onresize(Some(onresize.as_ref().unchecked_ref()));
+            console.set_onresize(Some(onresize.as_ref().unchecked_ref()));
 
             closures.push(onresize);
         }
@@ -99,7 +83,7 @@ impl Backend {
                     event: CursiveMouseEvent::Press(get_mouse_botton(&e)),
                 });
             }) as Box<dyn Fn(MouseEvent)>);
-            canvas.set_onmousedown(Some(onmousedown.as_ref().unchecked_ref()));
+            console.set_onmousedown(Some(onmousedown.as_ref().unchecked_ref()));
 
             mouse_closures.push(onmousedown);
         }
@@ -113,7 +97,7 @@ impl Backend {
                     event: CursiveMouseEvent::Hold(get_mouse_botton(&e)),
                 });
             }) as Box<dyn Fn(MouseEvent)>);
-            canvas.set_onmousemove(Some(onmousehold.as_ref().unchecked_ref()));
+            console.set_onmousemove(Some(onmousehold.as_ref().unchecked_ref()));
 
             mouse_closures.push(onmousehold);
         }
@@ -127,7 +111,7 @@ impl Backend {
                     event: CursiveMouseEvent::Release(get_mouse_botton(&e)),
                 });
             }) as Box<dyn Fn(MouseEvent)>);
-            canvas.set_onmouseup(Some(onmouseup.as_ref().unchecked_ref()));
+            console.set_onmouseup(Some(onmouseup.as_ref().unchecked_ref()));
 
             mouse_closures.push(onmouseup);
         }
@@ -159,17 +143,16 @@ impl Backend {
                     }
                 };
             }) as Box<dyn Fn(KeyboardEvent)>);
-            canvas.set_onkeydown(Some(onkeydown.as_ref().unchecked_ref()));
+            console.set_onkeydown(Some(onkeydown.as_ref().unchecked_ref()));
 
             keyboard_closures.push(onkeydown);
         }
 
         Ok(Box::new(Self {
-            ctx,
-            canvas,
+            document,
+            console,
             font_width: width,
             font_height: height,
-            line_height: height as f64,
             event_buffer,
             color: Cell::new(ColorPair {
                 front: Color::TerminalDefault,
@@ -186,21 +169,11 @@ impl Backend {
 
     #[inline]
     fn clear_with(&self, color: &str) {
-        self.ctx.set_fill_style(&color.into());
-        self.ctx.clear_rect(
-            0.,
-            0.,
-            self.canvas.width() as f64,
-            self.canvas.height() as f64,
-        );
-    }
+        self.console.style().set_property("background-color", color).unwrap();
 
-    #[inline]
-    fn calc_position(&self, pos: Vec2) -> (f64, f64) {
-        (
-            (pos.x * self.font_width) as f64,
-            (pos.y * self.font_height) as f64,
-        )
+        while let Some(child) = self.console.first_child() {
+            self.console.remove_child(&child).unwrap();
+        }
     }
 }
 
@@ -214,15 +187,20 @@ impl backend::Backend for Backend {
     }
 
     fn print_at(&self, pos: Vec2, text: &str) {
-        let pos = self.calc_position(pos);
         let color_cache = self.color_cache.borrow();
-        //let width = self.ctx.measure_text(text).expect("measure_text").width();
-        let width = (text.width() * self.font_width as usize) as f64;
-        self.ctx.set_fill_style(&color_cache.bg_color);
-        self.ctx.fill_rect(pos.0, pos.1, width, self.line_height);
+        let x = pos.x * self.font_width;
+        let y = pos.y * self.font_height;
+
+        let span: HtmlSpanElement = self.document.create_element("span").expect("create_element").unchecked_into();
+        span.style().set_property("position", "absolute").unwrap();
+        span.style().set_property("color", &color_cache.color).unwrap();
+        span.style().set_property("background-color", &color_cache.bg_color).unwrap();
+        span.style().set_property("top", y.to_string().as_str()).unwrap();
+        span.style().set_property("left", x.to_string().as_str()).unwrap();
+        span.set_inner_text(text);
         //TODO: use effect
-        self.ctx.set_fill_style(&color_cache.color);
-        self.ctx.fill_text(&text, pos.0, pos.1).expect("fill_text");
+
+        self.console.append_child(&span).unwrap();
     }
 
     fn refresh(&mut self) {
@@ -231,8 +209,8 @@ impl backend::Backend for Backend {
 
     fn screen_size(&self) -> Vec2 {
         Vec2::new(
-            self.canvas.width() as usize / self.font_width,
-            self.canvas.height() as usize / self.font_height,
+            self.console.offset_width() as usize / self.font_width,
+            self.console.offset_height() as usize / self.font_height,
         )
     }
 
@@ -247,8 +225,8 @@ impl backend::Backend for Backend {
 
         let mut color_cache = self.color_cache.borrow_mut();
 
-        color_cache.color = color_to_html(colors.front).into();
-        color_cache.bg_color = color_to_html(colors.back).into();
+        color_cache.color = color_to_html(colors.front);
+        color_cache.bg_color = color_to_html(colors.back);
 
         old
     }
