@@ -34,7 +34,7 @@ pub struct Backend {
     font_width: usize,
     font_height: usize,
     console: HtmlDivElement,
-    input: HtmlInputElement,
+    _input: HtmlInputElement,
     document: Document,
 
     _closures: Vec<Closure<dyn Fn()>>,
@@ -52,10 +52,10 @@ impl Backend {
 
         let temp: HtmlSpanElement = document.create_element("span")?.unchecked_into();
         temp.set_inner_text("\u{2588}");
-        console.append_child(&temp);
+        console.append_child(&temp)?;
         let width = temp.offset_width() as usize;
         let height = temp.offset_height() as usize;
-        console.remove_child(&temp);
+        console.remove_child(&temp)?;
 
         let input: HtmlInputElement = document.create_element("input")?.unchecked_into();
         console.append_child(&input)?;
@@ -74,6 +74,7 @@ impl Backend {
         let touch_closures = Vec::with_capacity(3);
         let mut keyboard_closures = Vec::with_capacity(1);
         let event_buffer = Rc::new(RefCell::new(Vec::with_capacity(300)));
+        let hold_start = Rc::new(Cell::new(false));
 
         {
             let event_buffer = event_buffer.clone();
@@ -86,8 +87,10 @@ impl Backend {
         }
 
         {
+            let hold_start = hold_start.clone();
             let event_buffer = event_buffer.clone();
             let onmousedown = Closure::wrap(Box::new(move |e: MouseEvent| {
+                hold_start.set(true);
                 event_buffer.borrow_mut().push(Event::Mouse {
                     offset: Vec2::new(0, 0),
                     position: Vec2::new(e.x() as usize, e.y() as usize),
@@ -100,8 +103,10 @@ impl Backend {
         }
 
         {
+            let hold_start = hold_start.clone();
             let event_buffer = event_buffer.clone();
             let onmousehold = Closure::wrap(Box::new(move |e: MouseEvent| {
+                if !hold_start.get() { return; }
                 event_buffer.borrow_mut().push(Event::Mouse {
                     offset: Vec2::new(0, 0),
                     position: Vec2::new(e.x() as usize, e.y() as usize),
@@ -114,8 +119,10 @@ impl Backend {
         }
 
         {
+            let hold_start = hold_start.clone();
             let event_buffer = event_buffer.clone();
             let onmouseup = Closure::wrap(Box::new(move |e: MouseEvent| {
+                hold_start.set(false);
                 event_buffer.borrow_mut().push(Event::Mouse {
                     offset: Vec2::new(0, 0),
                     position: Vec2::new(e.x() as usize, e.y() as usize),
@@ -164,7 +171,7 @@ impl Backend {
         Ok(Box::new(Self {
             document,
             console,
-            input,
+            _input: input,
             font_width: width,
             font_height: height,
             event_buffer,
@@ -201,10 +208,11 @@ impl backend::Backend for Backend {
     }
 
     fn print_at(&self, pos: Vec2, text: &str) {
-        web_sys::console::log_1(&"print_at".into());
         let color_cache = self.color_cache.borrow();
         let x = pos.x * self.font_width;
         let y = pos.y * self.font_height;
+
+        web_sys::console::log_1(&format!("print_at size: {}", text.len()).into());
 
         let span: HtmlSpanElement = self.document.create_element("span").expect("create_element").unchecked_into();
         span.style().set_property("position", "absolute").unwrap();
@@ -212,6 +220,7 @@ impl backend::Backend for Backend {
         span.style().set_property("background-color", &color_cache.bg_color).unwrap();
         span.style().set_property("top", y.to_string().as_str()).unwrap();
         span.style().set_property("left", x.to_string().as_str()).unwrap();
+
         span.set_inner_text(text);
         //TODO: use effect
 
