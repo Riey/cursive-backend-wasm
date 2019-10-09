@@ -16,16 +16,15 @@ unicode-width = "0.1.6"
 [dependencies.web-sys]
 version = "0.3.28"
 features = [
+    "console",
     "Window",
     "Document",
     "Node",
     "Element",
     "HtmlElement",
-    "HtmlCanvasElement",
+    "HtmlDivElement",
     "HtmlSpanElement",
     "CssStyleDeclaration",
-    "CanvasRenderingContext2d",
-    "ContextAttributes2d",
     "MouseEvent",
     "TouchEvent",
     "TouchList",
