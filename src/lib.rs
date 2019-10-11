@@ -7,8 +7,8 @@ use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
-    window, Document, EventTarget, HtmlDivElement, HtmlSpanElement, HtmlInputElement,
-    CompositionEvent, KeyboardEvent, MouseEvent, TouchEvent,
+    window, CompositionEvent, Document, EventTarget, HtmlDivElement, HtmlInputElement,
+    HtmlSpanElement, KeyboardEvent, MouseEvent, TouchEvent,
 };
 
 struct ColorCache {
@@ -46,9 +46,7 @@ pub struct Backend {
 }
 
 impl Backend {
-    pub fn init(
-        console: HtmlDivElement,
-    ) -> Result<Box<dyn backend::Backend>, JsValue> {
+    pub fn init(console: HtmlDivElement) -> Result<Box<dyn backend::Backend>, JsValue> {
         let window = window().ok_or("Window isn't exist")?;
         let document = window.document().ok_or("Document isn't exist")?;
 
@@ -110,7 +108,9 @@ impl Backend {
             let hold_start = hold_start.clone();
             let event_buffer = event_buffer.clone();
             let onmousehold = Closure::wrap(Box::new(move |e: MouseEvent| {
-                if !hold_start.get() { return; }
+                if !hold_start.get() {
+                    return;
+                }
                 event_buffer.borrow_mut().push(Event::Mouse {
                     offset: Vec2::new(0, 0),
                     position: Vec2::new(e.x() as usize, e.y() as usize),
@@ -163,7 +163,9 @@ impl Backend {
                     //TODO: alt ctrl shift meta
                     event_buffer.borrow_mut().push(Event::Key(key));
                 } else if key_str.len() == 1 {
-                    event_buffer.borrow_mut().push(Event::Char(key_str[0] as char));
+                    event_buffer
+                        .borrow_mut()
+                        .push(Event::Char(key_str[0] as char));
                 };
             }) as Box<dyn Fn(KeyboardEvent)>);
             input.set_onkeydown(Some(onkeydown.as_ref().unchecked_ref()));
@@ -183,7 +185,10 @@ impl Backend {
                     event_buffer.push(Event::Char(ch));
                 }
             }) as Box<dyn Fn(CompositionEvent)>);
-            target.add_event_listener_with_callback("compositionend", oncompositionend.as_ref().unchecked_ref())?;
+            target.add_event_listener_with_callback(
+                "compositionend",
+                oncompositionend.as_ref().unchecked_ref(),
+            )?;
 
             composition_closures.push(oncompositionend);
         }
@@ -212,11 +217,16 @@ impl Backend {
 
     #[inline]
     fn clear_with(&self, color: String) {
-        self.console.style().set_property("background-color", &color).unwrap();
+        self.console
+            .style()
+            .set_property("background-color", &color)
+            .unwrap();
         *self.cur_bg_color.borrow_mut() = color;
 
         while self.console.child_element_count() > 1 {
-            self.console.remove_child(&self.console.last_child().unwrap()).unwrap();
+            self.console
+                .remove_child(&self.console.last_child().unwrap())
+                .unwrap();
         }
     }
 }
@@ -234,19 +244,33 @@ impl backend::Backend for Backend {
         let color_cache = self.color_cache.borrow();
 
         // Don't need draw bg
-        if text.as_bytes().into_iter().all(|b| *b == b' ') && color_cache.bg_color.eq(&*self.cur_bg_color.borrow()) {
+        if text.as_bytes().into_iter().all(|b| *b == b' ')
+            && color_cache.bg_color.eq(&*self.cur_bg_color.borrow())
+        {
             return;
         }
 
         let x = pos.x * self.font_width;
         let y = pos.y * self.font_height;
 
-        let span: HtmlSpanElement = self.document.create_element("span").expect("create_element").unchecked_into();
+        let span: HtmlSpanElement = self
+            .document
+            .create_element("span")
+            .expect("create_element")
+            .unchecked_into();
         span.style().set_property("position", "absolute").unwrap();
-        span.style().set_property("color", &color_cache.color).unwrap();
-        span.style().set_property("background-color", &color_cache.bg_color).unwrap();
-        span.style().set_property("top", y.to_string().as_str()).unwrap();
-        span.style().set_property("left", x.to_string().as_str()).unwrap();
+        span.style()
+            .set_property("color", &color_cache.color)
+            .unwrap();
+        span.style()
+            .set_property("background-color", &color_cache.bg_color)
+            .unwrap();
+        span.style()
+            .set_property("top", y.to_string().as_str())
+            .unwrap();
+        span.style()
+            .set_property("left", x.to_string().as_str())
+            .unwrap();
 
         span.set_inner_text(text);
         //TODO: use effect
@@ -347,4 +371,3 @@ fn color_to_html(color: Color) -> String {
         }
     }
 }
-
