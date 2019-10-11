@@ -9,8 +9,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
     window, CanvasRenderingContext2d, CompositionEvent, ContextAttributes2d, EventTarget,
-    HtmlCanvasElement, HtmlInputElement, ImageBitmapRenderingContext, KeyboardEvent, MouseEvent,
-    OffscreenCanvas, TouchEvent,
+    HtmlCanvasElement, HtmlInputElement, KeyboardEvent, MouseEvent, TouchEvent,
 };
 
 struct ColorCache {
@@ -37,9 +36,7 @@ pub struct Backend {
     font_width: f64,
     font_height: f64,
     console: HtmlCanvasElement,
-    ctx: ImageBitmapRenderingContext,
-    offscreen_console: OffscreenCanvas,
-    offscreen_ctx: CanvasRenderingContext2d,
+    ctx: CanvasRenderingContext2d,
     _input: HtmlInputElement,
 
     _closures: Vec<Closure<dyn Fn()>>,
@@ -73,24 +70,18 @@ impl Backend {
         input.style().set_property("pointer-events", "none")?;
         input.focus()?;
 
-        let ctx: ImageBitmapRenderingContext = console
-            .get_context("bitmaprenderer")?
-            .ok_or("Can't get ImageBitMapRenderingContext")?
-            .dyn_into()?;
-
-        let offscreen_console: OffscreenCanvas = console.transfer_control_to_offscreen()?;
-
-        let offscreen_ctx: CanvasRenderingContext2d = offscreen_console
+        let ctx: CanvasRenderingContext2d = console
             .get_context_with_context_options(
                 "2d",
                 ContextAttributes2d::new().alpha(false).as_ref(),
             )?
             .ok_or("Can't get CanvasRenderingContext2d")?
             .dyn_into()?;
-        offscreen_ctx.set_font(&format!("{}px {}", font_size, font_family));
+        ctx.set_font(&format!("{}px {}", font_size, font_family));
+        ctx.set_text_baseline("top");
 
         let height = font_size;
-        let width = offscreen_ctx.measure_text("A")?.width();
+        let width = ctx.measure_text("A")?.width();
 
         let mut closures = Vec::with_capacity(1);
         let mut mouse_closures = Vec::with_capacity(3);
@@ -224,8 +215,6 @@ impl Backend {
         Ok(Box::new(Self {
             console,
             ctx,
-            offscreen_console,
-            offscreen_ctx,
             _input: input,
             font_width: width,
             font_height: height,
@@ -254,8 +243,8 @@ impl backend::Backend for Backend {
     fn clear(&self, color: Color) {
         log::trace!("clear color: {:?}", color);
         let color = color_to_html(color).into();
-        self.offscreen_ctx.set_fill_style(&color);
-        self.offscreen_ctx.fill_rect(
+        self.ctx.set_fill_style(&color);
+        self.ctx.fill_rect(
             0.,
             0.,
             self.console.width() as _,
@@ -272,17 +261,13 @@ impl backend::Backend for Backend {
         let width = self.font_width * text.width() as f64;
         log::trace!("print_at text: {} width: {}", text, width);
 
-        self.offscreen_ctx.set_fill_style(&color_cache.bg_color);
-        self.offscreen_ctx.fill_rect(x, y, width, self.font_height);
-        self.offscreen_ctx.set_fill_style(&color_cache.color);
-        self.offscreen_ctx.fill_text(text, x, y).unwrap();
+        self.ctx.set_fill_style(&color_cache.bg_color);
+        self.ctx.fill_rect(x, y, width, self.font_height);
+        self.ctx.set_fill_style(&color_cache.color);
+        self.ctx.fill_text(text, x, y).unwrap();
     }
 
-    fn refresh(&mut self) {
-        self.ctx.transfer_from_image_bitmap(
-            &self.offscreen_console.transfer_to_image_bitmap().unwrap(),
-        );
-    }
+    fn refresh(&mut self) {}
 
     fn screen_size(&self) -> Vec2 {
         Vec2::new(
