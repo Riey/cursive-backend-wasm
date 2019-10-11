@@ -29,6 +29,7 @@ pub struct Backend {
     event_buffer: Rc<RefCell<Vec<Event>>>,
     color: Cell<ColorPair>,
     color_cache: RefCell<ColorCache>,
+    cur_bg_color: RefCell<String>,
     effect: Cell<Effect>,
 
     font_width: usize,
@@ -198,6 +199,7 @@ impl Backend {
                 front: Color::TerminalDefault,
                 back: Color::TerminalDefault,
             }),
+            cur_bg_color: RefCell::default(),
             color_cache: RefCell::default(),
             effect: Cell::new(Effect::Simple),
             _closures: closures,
@@ -209,8 +211,9 @@ impl Backend {
     }
 
     #[inline]
-    fn clear_with(&self, color: &str) {
-        self.console.style().set_property("background-color", color).unwrap();
+    fn clear_with(&self, color: String) {
+        self.console.style().set_property("background-color", &color).unwrap();
+        *self.cur_bg_color.borrow_mut() = color;
 
         while self.console.child_element_count() > 1 {
             self.console.remove_child(&self.console.last_child().unwrap()).unwrap();
@@ -224,17 +227,17 @@ impl backend::Backend for Backend {
     }
 
     fn clear(&self, color: Color) {
-        self.clear_with(&color_to_html(color));
+        self.clear_with(color_to_html(color));
     }
 
-    fn print_at(&self, pos: Vec2, mut text: &str) {
+    fn print_at(&self, pos: Vec2, text: &str) {
+        let color_cache = self.color_cache.borrow();
 
-        // Don't need
-        if text == " " {
+        // Don't need draw bg
+        if text.as_bytes().into_iter().all(|b| *b == b' ') && color_cache.bg_color.eq(&*self.cur_bg_color.borrow()) {
             return;
         }
 
-        let color_cache = self.color_cache.borrow();
         let x = pos.x * self.font_width;
         let y = pos.y * self.font_height;
 
