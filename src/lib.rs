@@ -4,23 +4,25 @@ use cursive::theme::{BaseColor, Color, ColorPair, Effect};
 use cursive::Vec2;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use unicode_width::UnicodeWidthStr;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
-    window, CompositionEvent, Document, EventTarget, HtmlDivElement, HtmlInputElement,
-    HtmlSpanElement, KeyboardEvent, MouseEvent, TouchEvent,
+    window, CanvasRenderingContext2d, CompositionEvent, ContextAttributes2d, EventTarget,
+    HtmlCanvasElement, HtmlInputElement, ImageBitmapRenderingContext, KeyboardEvent, MouseEvent,
+    OffscreenCanvas, TouchEvent,
 };
 
 struct ColorCache {
-    color: String,
-    bg_color: String,
+    color: JsValue,
+    bg_color: JsValue,
 }
 
 impl Default for ColorCache {
     fn default() -> Self {
         Self {
-            color: "".into(),
-            bg_color: "".into(),
+            color: JsValue::UNDEFINED,
+            bg_color: JsValue::UNDEFINED,
         }
     }
 }
@@ -29,14 +31,16 @@ pub struct Backend {
     event_buffer: Rc<RefCell<Vec<Event>>>,
     color: Cell<ColorPair>,
     color_cache: RefCell<ColorCache>,
-    cur_bg_color: RefCell<String>,
+    cur_bg_color: RefCell<JsValue>,
     effect: Cell<Effect>,
 
-    font_width: usize,
-    font_height: usize,
-    console: HtmlDivElement,
+    font_width: f64,
+    font_height: f64,
+    console: HtmlCanvasElement,
+    ctx: ImageBitmapRenderingContext,
+    offscreen_console: OffscreenCanvas,
+    offscreen_ctx: CanvasRenderingContext2d,
     _input: HtmlInputElement,
-    document: Document,
 
     _closures: Vec<Closure<dyn Fn()>>,
     _mouse_closures: Vec<Closure<dyn Fn(MouseEvent)>>,
@@ -46,29 +50,47 @@ pub struct Backend {
 }
 
 impl Backend {
-    pub fn init(console: HtmlDivElement) -> Result<Box<dyn backend::Backend>, JsValue> {
+    pub fn init(
+        console: HtmlCanvasElement,
+        font_family: &str,
+        font_size: f64,
+    ) -> Result<Box<dyn backend::Backend>, JsValue> {
         let window = window().ok_or("Window isn't exist")?;
         let document = window.document().ok_or("Document isn't exist")?;
-
-        let temp: HtmlSpanElement = document.create_element("span")?.unchecked_into();
-        temp.set_inner_text("\u{2588}");
-        console.append_child(&temp)?;
-        let width = temp.offset_width() as usize;
-        let height = temp.offset_height() as usize;
-        console.remove_child(&temp)?;
 
         let input: HtmlInputElement = document.create_element("input")?.unchecked_into();
         console.append_child(&input)?;
         input.set_autofocus(true);
-        input.style().set_property("position", "relative")?;
+        input.style().set_property("position", "absolute")?;
         input.style().set_property("top", "0px")?;
         input.style().set_property("left", "0px")?;
         input.style().set_property("border", "none")?;
         input.style().set_property("width", "100%")?;
         input.style().set_property("height", "100%")?;
         input.style().set_property("opacity", "0")?;
+        input.style().set_property("z-index", "0")?;
         input.style().set_property("padding", "0px")?;
-        input.style().set_property("pointerEvents", "none")?;
+        input.style().set_property("pointer-events", "none")?;
+        input.focus()?;
+
+        let ctx: ImageBitmapRenderingContext = console
+            .get_context("bitmaprenderer")?
+            .ok_or("Can't get ImageBitMapRenderingContext")?
+            .dyn_into()?;
+
+        let offscreen_console: OffscreenCanvas = console.transfer_control_to_offscreen()?;
+
+        let offscreen_ctx: CanvasRenderingContext2d = offscreen_console
+            .get_context_with_context_options(
+                "2d",
+                ContextAttributes2d::new().alpha(false).as_ref(),
+            )?
+            .ok_or("Can't get CanvasRenderingContext2d")?
+            .dyn_into()?;
+        offscreen_ctx.set_font(&format!("{}px {}", font_size, font_family));
+
+        let height = font_size;
+        let width = offscreen_ctx.measure_text("A")?.width();
 
         let mut closures = Vec::with_capacity(1);
         let mut mouse_closures = Vec::with_capacity(3);
@@ -79,9 +101,13 @@ impl Backend {
         let hold_start = Rc::new(Cell::new(false));
 
         {
+            //let console_inner = console.clone();
+            //let offscreen_console = offscreen_console.clone();
             let event_buffer = event_buffer.clone();
             let onresize = Closure::wrap(Box::new(move || {
                 event_buffer.borrow_mut().push(Event::WindowResize);
+                //offscreen_console.set_width(console_inner.width());
+                //offscreen_console.set_height(console_inner.height());
             }) as Box<dyn Fn()>);
             console.set_onresize(Some(onresize.as_ref().unchecked_ref()));
 
@@ -89,15 +115,19 @@ impl Backend {
         }
 
         {
+            let input = input.clone();
             let hold_start = hold_start.clone();
             let event_buffer = event_buffer.clone();
             let onmousedown = Closure::wrap(Box::new(move |e: MouseEvent| {
+                input.focus().unwrap();
                 hold_start.set(true);
                 event_buffer.borrow_mut().push(Event::Mouse {
                     offset: Vec2::new(0, 0),
                     position: Vec2::new(e.x() as usize, e.y() as usize),
                     event: CursiveMouseEvent::Press(get_mouse_botton(&e)),
                 });
+                let e: &web_sys::Event = e.as_ref();
+                e.prevent_default();
             }) as Box<dyn Fn(MouseEvent)>);
             console.set_onmousedown(Some(onmousedown.as_ref().unchecked_ref()));
 
@@ -142,7 +172,6 @@ impl Backend {
             let event_buffer = event_buffer.clone();
             let onkeydown = Closure::wrap(Box::new(move |e: KeyboardEvent| {
                 let key_str = e.key();
-                web_sys::console::log_1(&format!("keydown key: {}", key_str).into());
                 let key_str = key_str.as_bytes();
                 let key = match key_str {
                     b"Backspace" => Some(Key::Backspace),
@@ -178,7 +207,6 @@ impl Backend {
             let event_buffer = event_buffer.clone();
             let oncompositionend = Closure::wrap(Box::new(move |e: CompositionEvent| {
                 let data = e.data().unwrap();
-                web_sys::console::log_1(&format!("compositionend data: {}", data).into());
 
                 let mut event_buffer = event_buffer.borrow_mut();
                 for ch in data.chars() {
@@ -194,8 +222,10 @@ impl Backend {
         }
 
         Ok(Box::new(Self {
-            document,
             console,
+            ctx,
+            offscreen_console,
+            offscreen_ctx,
             _input: input,
             font_width: width,
             font_height: height,
@@ -204,7 +234,7 @@ impl Backend {
                 front: Color::TerminalDefault,
                 back: Color::TerminalDefault,
             }),
-            cur_bg_color: RefCell::default(),
+            cur_bg_color: RefCell::new(JsValue::UNDEFINED),
             color_cache: RefCell::default(),
             effect: Cell::new(Effect::Simple),
             _closures: closures,
@@ -214,21 +244,6 @@ impl Backend {
             _composition_closures: composition_closures,
         }))
     }
-
-    #[inline]
-    fn clear_with(&self, color: String) {
-        self.console
-            .style()
-            .set_property("background-color", &color)
-            .unwrap();
-        *self.cur_bg_color.borrow_mut() = color;
-
-        while self.console.child_element_count() > 1 {
-            self.console
-                .remove_child(&self.console.last_child().unwrap())
-                .unwrap();
-        }
-    }
 }
 
 impl backend::Backend for Backend {
@@ -237,55 +252,42 @@ impl backend::Backend for Backend {
     }
 
     fn clear(&self, color: Color) {
-        self.clear_with(color_to_html(color));
+        log::trace!("clear color: {:?}", color);
+        let color = color_to_html(color).into();
+        self.offscreen_ctx.set_fill_style(&color);
+        self.offscreen_ctx.fill_rect(
+            0.,
+            0.,
+            self.console.width() as _,
+            self.console.height() as _,
+        );
+        *self.cur_bg_color.borrow_mut() = color;
     }
 
     fn print_at(&self, pos: Vec2, text: &str) {
         let color_cache = self.color_cache.borrow();
 
-        // Don't need draw bg
-        if text.as_bytes().into_iter().all(|b| *b == b' ')
-            && color_cache.bg_color.eq(&*self.cur_bg_color.borrow())
-        {
-            return;
-        }
+        let x = pos.x as f64 * self.font_width;
+        let y = pos.y as f64 * self.font_height;
+        let width = self.font_width * text.width() as f64;
+        log::trace!("print_at text: {} width: {}", text, width);
 
-        let x = pos.x * self.font_width;
-        let y = pos.y * self.font_height;
-
-        let span: HtmlSpanElement = self
-            .document
-            .create_element("span")
-            .expect("create_element")
-            .unchecked_into();
-        span.style().set_property("position", "absolute").unwrap();
-        span.style()
-            .set_property("color", &color_cache.color)
-            .unwrap();
-        span.style()
-            .set_property("background-color", &color_cache.bg_color)
-            .unwrap();
-        span.style()
-            .set_property("top", y.to_string().as_str())
-            .unwrap();
-        span.style()
-            .set_property("left", x.to_string().as_str())
-            .unwrap();
-
-        span.set_inner_text(text);
-        //TODO: use effect
-
-        self.console.append_child(&span).unwrap();
+        self.offscreen_ctx.set_fill_style(&color_cache.bg_color);
+        self.offscreen_ctx.fill_rect(x, y, width, self.font_height);
+        self.offscreen_ctx.set_fill_style(&color_cache.color);
+        self.offscreen_ctx.fill_text(text, x, y).unwrap();
     }
 
     fn refresh(&mut self) {
-        //TODO: what to do? double buffering?
+        self.ctx.transfer_from_image_bitmap(
+            &self.offscreen_console.transfer_to_image_bitmap().unwrap(),
+        );
     }
 
     fn screen_size(&self) -> Vec2 {
         Vec2::new(
-            self.console.offset_width() as usize / self.font_width,
-            self.console.offset_height() as usize / self.font_height,
+            self.console.width() as usize / self.font_width as usize,
+            self.console.height() as usize / self.font_height as usize,
         )
     }
 
@@ -300,8 +302,8 @@ impl backend::Backend for Backend {
 
         let mut color_cache = self.color_cache.borrow_mut();
 
-        color_cache.color = color_to_html(colors.front);
-        color_cache.bg_color = color_to_html(colors.back);
+        color_cache.color = color_to_html(colors.front).into();
+        color_cache.bg_color = color_to_html(colors.back).into();
 
         old
     }

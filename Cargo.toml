@@ -12,17 +12,25 @@ cursive = { git = "https://github.com/Riey/cursive", branch = "wasm", default-fe
 wasm-bindgen = "0.2.51"
 js-sys = "0.3.28"
 unicode-width = "0.1.6"
+log = "0.4.8"
 
 [dependencies.web-sys]
 version = "0.3.28"
 features = [
-    "console",
     "Window",
     "Document",
     "Node",
     "Element",
+    "Event",
     "EventTarget",
     "HtmlElement",
+    "HtmlCanvasElement",
+    "ImageBitmap",
+    "ImageBitmapRenderingContext",
+    "CanvasRenderingContext2d",
+    "ContextAttributes2d",
+    "OffscreenCanvas",
+    "TextMetrics",
     "HtmlDivElement",
     "HtmlSpanElement",
     "HtmlInputElement",
