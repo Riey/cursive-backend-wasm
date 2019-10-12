@@ -3,6 +3,7 @@ use cursive::event::{Event, Key, MouseButton, MouseEvent as CursiveMouseEvent};
 use cursive::theme::{BaseColor, Color, ColorPair, Effect};
 use cursive::Vec2;
 use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
 use std::rc::Rc;
 use unicode_width::UnicodeWidthStr;
 use wasm_bindgen::prelude::*;
@@ -27,7 +28,7 @@ impl Default for ColorCache {
 }
 
 pub struct Backend {
-    event_buffer: Rc<RefCell<Vec<Event>>>,
+    event_buffer: Rc<RefCell<VecDeque<Event>>>,
     color: Cell<ColorPair>,
     color_cache: RefCell<ColorCache>,
     cur_bg_color: RefCell<JsValue>,
@@ -88,7 +89,7 @@ impl Backend {
         let mut touch_closures = Vec::with_capacity(3);
         let mut keyboard_closures = Vec::with_capacity(1);
         let mut composition_closures = Vec::with_capacity(1);
-        let event_buffer = Rc::new(RefCell::new(Vec::with_capacity(300)));
+        let event_buffer = Rc::new(RefCell::new(VecDeque::with_capacity(300)));
         let hold_start = Rc::new(Cell::new(false));
 
         {
@@ -96,7 +97,7 @@ impl Backend {
             //let offscreen_console = offscreen_console.clone();
             let event_buffer = event_buffer.clone();
             let onresize = Closure::wrap(Box::new(move || {
-                event_buffer.borrow_mut().push(Event::WindowResize);
+                event_buffer.borrow_mut().push_back(Event::WindowResize);
                 //offscreen_console.set_width(console_inner.width());
                 //offscreen_console.set_height(console_inner.height());
             }) as Box<dyn Fn()>);
@@ -112,7 +113,7 @@ impl Backend {
             let onmousedown = Closure::wrap(Box::new(move |e: MouseEvent| {
                 input.focus().unwrap();
                 hold_start.set(true);
-                event_buffer.borrow_mut().push(Event::Mouse {
+                event_buffer.borrow_mut().push_back(Event::Mouse {
                     offset: Vec2::new(0, 0),
                     position: Vec2::new(e.x() as usize, e.y() as usize),
                     event: CursiveMouseEvent::Press(get_mouse_botton(&e)),
@@ -132,7 +133,7 @@ impl Backend {
                 if !hold_start.get() {
                     return;
                 }
-                event_buffer.borrow_mut().push(Event::Mouse {
+                event_buffer.borrow_mut().push_back(Event::Mouse {
                     offset: Vec2::new(0, 0),
                     position: Vec2::new(e.x() as usize, e.y() as usize),
                     event: CursiveMouseEvent::Hold(get_mouse_botton(&e)),
@@ -148,7 +149,7 @@ impl Backend {
             let event_buffer = event_buffer.clone();
             let onmouseup = Closure::wrap(Box::new(move |e: MouseEvent| {
                 hold_start.set(false);
-                event_buffer.borrow_mut().push(Event::Mouse {
+                event_buffer.borrow_mut().push_back(Event::Mouse {
                     offset: Vec2::new(0, 0),
                     position: Vec2::new(e.x() as usize, e.y() as usize),
                     event: CursiveMouseEvent::Release(get_mouse_botton(&e)),
@@ -163,6 +164,7 @@ impl Backend {
             let event_buffer = event_buffer.clone();
             let onkeydown = Closure::wrap(Box::new(move |e: KeyboardEvent| {
                 let key_str = e.key();
+                log::trace!("keydown: [{}]", key_str);
                 let key_str = key_str.as_bytes();
                 let key = match key_str {
                     b"Backspace" => Some(Key::Backspace),
@@ -181,11 +183,11 @@ impl Backend {
 
                 if let Some(key) = key {
                     //TODO: alt ctrl shift meta
-                    event_buffer.borrow_mut().push(Event::Key(key));
+                    event_buffer.borrow_mut().push_back(Event::Key(key));
                 } else if key_str.len() == 1 {
                     event_buffer
                         .borrow_mut()
-                        .push(Event::Char(key_str[0] as char));
+                        .push_back(Event::Char(key_str[0] as char));
                 };
             }) as Box<dyn Fn(KeyboardEvent)>);
             input.set_onkeydown(Some(onkeydown.as_ref().unchecked_ref()));
@@ -199,9 +201,11 @@ impl Backend {
             let oncompositionend = Closure::wrap(Box::new(move |e: CompositionEvent| {
                 let data = e.data().unwrap();
 
+                log::trace!("compositionend: [{}]", data);
+
                 let mut event_buffer = event_buffer.borrow_mut();
                 for ch in data.chars() {
-                    event_buffer.push(Event::Char(ch));
+                    event_buffer.push_back(Event::Char(ch));
                 }
             }) as Box<dyn Fn(CompositionEvent)>);
             target.add_event_listener_with_callback(
@@ -217,7 +221,11 @@ impl Backend {
             let hold_start = hold_start.clone();
             let event_buffer = event_buffer.clone();
             let ontouchstart = Closure::wrap(Box::new(move |e: TouchEvent| {
+                input.focus().unwrap();
+                input.select();
                 let touches = e.touches();
+
+                log::debug!("touch length: {}", touches.length());
 
                 if touches.length() > 1 {
                     log::debug!("Detect multi touch! will be ignored");
@@ -229,9 +237,8 @@ impl Backend {
                 }
 
                 let touch = e.touches().get(0).unwrap();
-                input.focus().unwrap();
                 hold_start.set(true);
-                event_buffer.borrow_mut().push(Event::Mouse {
+                event_buffer.borrow_mut().push_back(Event::Mouse {
                     offset: Vec2::new(0, 0),
                     position: Vec2::new(touch.client_x() as usize, touch.client_y() as usize),
                     event: CursiveMouseEvent::Press(MouseButton::Left),
@@ -262,7 +269,7 @@ impl Backend {
                 }
 
                 let touch = e.touches().get(0).unwrap();
-                event_buffer.borrow_mut().push(Event::Mouse {
+                event_buffer.borrow_mut().push_back(Event::Mouse {
                     offset: Vec2::new(0, 0),
                     position: Vec2::new(touch.client_x() as usize, touch.client_y() as usize),
                     event: CursiveMouseEvent::Hold(MouseButton::Left),
@@ -290,7 +297,7 @@ impl Backend {
 
                 let touch = e.touches().get(0).unwrap();
                 hold_start.set(false);
-                event_buffer.borrow_mut().push(Event::Mouse {
+                event_buffer.borrow_mut().push_back(Event::Mouse {
                     offset: Vec2::new(0, 0),
                     position: Vec2::new(touch.client_x() as usize, touch.client_y() as usize),
                     event: CursiveMouseEvent::Release(MouseButton::Left),
@@ -326,7 +333,7 @@ impl Backend {
 
 impl backend::Backend for Backend {
     fn poll_event(&mut self) -> Option<Event> {
-        self.event_buffer.borrow_mut().pop()
+        self.event_buffer.borrow_mut().pop_front()
     }
 
     fn clear(&self, color: Color) {
