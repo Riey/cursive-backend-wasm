@@ -85,7 +85,7 @@ impl Backend {
 
         let mut closures = Vec::with_capacity(1);
         let mut mouse_closures = Vec::with_capacity(3);
-        let touch_closures = Vec::with_capacity(3);
+        let mut touch_closures = Vec::with_capacity(3);
         let mut keyboard_closures = Vec::with_capacity(1);
         let mut composition_closures = Vec::with_capacity(1);
         let event_buffer = Rc::new(RefCell::new(Vec::with_capacity(300)));
@@ -212,6 +212,95 @@ impl Backend {
             composition_closures.push(oncompositionend);
         }
 
+        {
+            let input = input.clone();
+            let hold_start = hold_start.clone();
+            let event_buffer = event_buffer.clone();
+            let ontouchstart = Closure::wrap(Box::new(move |e: TouchEvent| {
+                let touches = e.touches();
+
+                if touches.length() > 1 {
+                    log::debug!("Detect multi touch! will be ignored");
+                    return;
+                }
+
+                if touches.length() == 0 {
+                    return;
+                }
+
+                let touch = e.touches().get(0).unwrap();
+                input.focus().unwrap();
+                hold_start.set(true);
+                event_buffer.borrow_mut().push(Event::Mouse {
+                    offset: Vec2::new(0, 0),
+                    position: Vec2::new(touch.client_x() as usize, touch.client_y() as usize),
+                    event: CursiveMouseEvent::Press(MouseButton::Left),
+                });
+            }) as Box<dyn Fn(TouchEvent)>);
+            console.set_ontouchstart(Some(ontouchstart.as_ref().unchecked_ref()));
+
+            touch_closures.push(ontouchstart);
+        }
+
+        {
+            let hold_start = hold_start.clone();
+            let event_buffer = event_buffer.clone();
+            let ontouchmove = Closure::wrap(Box::new(move |e: TouchEvent| {
+                let touches = e.touches();
+
+                if touches.length() > 1 {
+                    log::debug!("Detect multi touch! will be ignored");
+                    return;
+                }
+
+                if touches.length() == 0 {
+                    return;
+                }
+
+                if !hold_start.get() {
+                    return;
+                }
+
+                let touch = e.touches().get(0).unwrap();
+                event_buffer.borrow_mut().push(Event::Mouse {
+                    offset: Vec2::new(0, 0),
+                    position: Vec2::new(touch.client_x() as usize, touch.client_y() as usize),
+                    event: CursiveMouseEvent::Hold(MouseButton::Left),
+                });
+            }) as Box<dyn Fn(TouchEvent)>);
+            console.set_ontouchmove(Some(ontouchmove.as_ref().unchecked_ref()));
+
+            touch_closures.push(ontouchmove);
+        }
+
+        {
+            let hold_start = hold_start.clone();
+            let event_buffer = event_buffer.clone();
+            let ontouchend = Closure::wrap(Box::new(move |e: TouchEvent| {
+                let touches = e.touches();
+
+                if touches.length() > 1 {
+                    log::debug!("Detect multi touch! will be ignored");
+                    return;
+                }
+
+                if touches.length() == 0 {
+                    return;
+                }
+
+                let touch = e.touches().get(0).unwrap();
+                hold_start.set(false);
+                event_buffer.borrow_mut().push(Event::Mouse {
+                    offset: Vec2::new(0, 0),
+                    position: Vec2::new(touch.client_x() as usize, touch.client_y() as usize),
+                    event: CursiveMouseEvent::Release(MouseButton::Left),
+                });
+            }) as Box<dyn Fn(TouchEvent)>);
+            console.set_ontouchend(Some(ontouchend.as_ref().unchecked_ref()));
+
+            touch_closures.push(ontouchend);
+        }
+
         Ok(Box::new(Self {
             console,
             ctx,
@@ -259,7 +348,6 @@ impl backend::Backend for Backend {
         let x = pos.x as f64 * self.font_width;
         let y = pos.y as f64 * self.font_height;
         let width = self.font_width * text.width() as f64;
-        log::trace!("print_at text: {} width: {}", text, width);
 
         self.ctx.set_fill_style(&color_cache.bg_color);
         self.ctx.fill_rect(x, y, width, self.font_height);
