@@ -5,12 +5,11 @@ authors = ["Riey <creeper844@gmail.com>"]
 edition = "2018"
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [dependencies]
 cursive = { git = "https://github.com/Riey/cursive", branch = "wasm", default-features = false }
 wasm-bindgen = "0.2.51"
-js-sys = "0.3.28"
 unicode-width = "0.1.6"
 log = "0.4.8"
 
@@ -39,6 +38,3 @@ features = [
     "Touch",
     "KeyboardEvent",
 ]
-
-[dev-dependencies]
-wasm-bindgen-test = "0.2"
