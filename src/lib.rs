@@ -111,6 +111,7 @@ impl Backend {
             let hold_start = hold_start.clone();
             let event_buffer = event_buffer.clone();
             let onmousedown = Closure::wrap(Box::new(move |e: MouseEvent| {
+                prevent_default(&e);
                 input.focus().unwrap();
                 hold_start.set(true);
                 event_buffer.borrow_mut().push_back(Event::Mouse {
@@ -133,6 +134,7 @@ impl Backend {
                 if !hold_start.get() {
                     return;
                 }
+                prevent_default(&e);
                 event_buffer.borrow_mut().push_back(Event::Mouse {
                     offset: Vec2::new(0, 0),
                     position: Vec2::new(e.x() as usize, e.y() as usize),
@@ -148,6 +150,7 @@ impl Backend {
             let hold_start = hold_start.clone();
             let event_buffer = event_buffer.clone();
             let onmouseup = Closure::wrap(Box::new(move |e: MouseEvent| {
+                prevent_default(&e);
                 hold_start.set(false);
                 event_buffer.borrow_mut().push_back(Event::Mouse {
                     offset: Vec2::new(0, 0),
@@ -163,6 +166,7 @@ impl Backend {
         {
             let event_buffer = event_buffer.clone();
             let onkeydown = Closure::wrap(Box::new(move |e: KeyboardEvent| {
+                prevent_default(&e);
                 let key_str = e.key();
                 log::trace!("keydown: [{}]", key_str);
                 let key_str = key_str.as_bytes();
@@ -199,6 +203,7 @@ impl Backend {
             let target: &EventTarget = input.as_ref();
             let event_buffer = event_buffer.clone();
             let oncompositionend = Closure::wrap(Box::new(move |e: CompositionEvent| {
+                prevent_default(&e);
                 let data = e.data().unwrap();
 
                 log::trace!("compositionend: [{}]", data);
@@ -221,8 +226,6 @@ impl Backend {
             let hold_start = hold_start.clone();
             let event_buffer = event_buffer.clone();
             let ontouchstart = Closure::wrap(Box::new(move |e: TouchEvent| {
-                input.focus().unwrap();
-                input.select();
                 let touches = e.touches();
 
                 log::debug!("touch length: {}", touches.length());
@@ -235,6 +238,9 @@ impl Backend {
                 if touches.length() == 0 {
                     return;
                 }
+                input.focus().unwrap();
+                input.select();
+                prevent_default(&e);
 
                 let touch = e.touches().get(0).unwrap();
                 hold_start.set(true);
@@ -269,6 +275,8 @@ impl Backend {
                 }
 
                 let touch = e.touches().get(0).unwrap();
+                prevent_default(&e);
+
                 event_buffer.borrow_mut().push_back(Event::Mouse {
                     offset: Vec2::new(0, 0),
                     position: Vec2::new(touch.client_x() as usize, touch.client_y() as usize),
@@ -296,6 +304,7 @@ impl Backend {
                 }
 
                 let touch = e.touches().get(0).unwrap();
+                prevent_default(&e);
                 hold_start.set(false);
                 event_buffer.borrow_mut().push_back(Event::Mouse {
                     offset: Vec2::new(0, 0),
@@ -395,6 +404,10 @@ impl backend::Backend for Backend {
     fn unset_effect(&self, _effect: Effect) {
         self.effect.set(Effect::Simple);
     }
+}
+
+fn prevent_default(e: &impl AsRef<web_sys::Event>) {
+    e.as_ref().prevent_default();
 }
 
 fn get_mouse_botton(e: &MouseEvent) -> MouseButton {
