@@ -9,8 +9,9 @@ use unicode_width::UnicodeWidthStr;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
-    window, CanvasRenderingContext2d, CompositionEvent, ContextAttributes2d, EventTarget,
-    HtmlCanvasElement, HtmlElement, HtmlInputElement, KeyboardEvent, MouseEvent, TouchEvent,
+    CanvasRenderingContext2d, CompositionEvent, ContextAttributes2d, EventTarget,
+    HtmlCanvasElement, HtmlDivElement, HtmlElement, HtmlInputElement, KeyboardEvent, MouseEvent,
+    TouchEvent,
 };
 
 struct ColorCache {
@@ -49,28 +50,26 @@ pub struct Backend {
 
 impl Backend {
     pub fn init(
+        container: HtmlDivElement,
         console: HtmlCanvasElement,
+        input: HtmlInputElement,
         composition_text: HtmlElement,
         font_family: &str,
         font_size: f64,
     ) -> Result<Box<dyn backend::Backend>, JsValue> {
-        let window = window().ok_or("Window isn't exist")?;
-        let document = window.document().ok_or("Document isn't exist")?;
-
-        let input: HtmlInputElement = document.create_element("input")?.unchecked_into();
-        console.append_child(&input)?;
         input.set_autofocus(true);
+        input.set_max_length(1);
         input.style().set_property("position", "absolute")?;
+        input.style().set_property("cursor", "default")?;
         input.style().set_property("top", "0px")?;
         input.style().set_property("left", "0px")?;
         input.style().set_property("border", "none")?;
         input.style().set_property("width", "100%")?;
         input.style().set_property("height", "100%")?;
         input.style().set_property("opacity", "0")?;
-        input.style().set_property("z-index", "0")?;
         input.style().set_property("padding", "0px")?;
-        input.style().set_property("pointer-events", "none")?;
-        input.focus()?;
+
+        container.style().set_property("position", "relative")?;
 
         let ctx: CanvasRenderingContext2d = console
             .get_context_with_context_options(
@@ -94,13 +93,9 @@ impl Backend {
         let hold_start = Rc::new(Cell::new(false));
 
         {
-            //let console_inner = console.clone();
-            //let offscreen_console = offscreen_console.clone();
             let event_buffer = event_buffer.clone();
             let onresize = Closure::wrap(Box::new(move || {
                 event_buffer.borrow_mut().push_back(Event::WindowResize);
-                //offscreen_console.set_width(console_inner.width());
-                //offscreen_console.set_height(console_inner.height());
             }) as Box<dyn Fn()>);
             console.set_onresize(Some(onresize.as_ref().unchecked_ref()));
 
@@ -108,22 +103,17 @@ impl Backend {
         }
 
         {
-            let input = input.clone();
             let hold_start = hold_start.clone();
             let event_buffer = event_buffer.clone();
             let onmousedown = Closure::wrap(Box::new(move |e: MouseEvent| {
-                prevent_default(&e);
-                input.focus().unwrap();
                 hold_start.set(true);
                 event_buffer.borrow_mut().push_back(Event::Mouse {
                     offset: Vec2::new(0, 0),
                     position: Vec2::new(e.x() as usize, e.y() as usize),
                     event: CursiveMouseEvent::Press(get_mouse_botton(&e)),
                 });
-                let e: &web_sys::Event = e.as_ref();
-                e.prevent_default();
             }) as Box<dyn Fn(MouseEvent)>);
-            console.set_onmousedown(Some(onmousedown.as_ref().unchecked_ref()));
+            input.set_onmousedown(Some(onmousedown.as_ref().unchecked_ref()));
 
             mouse_closures.push(onmousedown);
         }
@@ -135,14 +125,13 @@ impl Backend {
                 if !hold_start.get() {
                     return;
                 }
-                prevent_default(&e);
                 event_buffer.borrow_mut().push_back(Event::Mouse {
                     offset: Vec2::new(0, 0),
                     position: Vec2::new(e.x() as usize, e.y() as usize),
                     event: CursiveMouseEvent::Hold(get_mouse_botton(&e)),
                 });
             }) as Box<dyn Fn(MouseEvent)>);
-            console.set_onmousemove(Some(onmousehold.as_ref().unchecked_ref()));
+            input.set_onmousemove(Some(onmousehold.as_ref().unchecked_ref()));
 
             mouse_closures.push(onmousehold);
         }
@@ -151,7 +140,6 @@ impl Backend {
             let hold_start = hold_start.clone();
             let event_buffer = event_buffer.clone();
             let onmouseup = Closure::wrap(Box::new(move |e: MouseEvent| {
-                prevent_default(&e);
                 hold_start.set(false);
                 event_buffer.borrow_mut().push_back(Event::Mouse {
                     offset: Vec2::new(0, 0),
@@ -159,7 +147,7 @@ impl Backend {
                     event: CursiveMouseEvent::Release(get_mouse_botton(&e)),
                 });
             }) as Box<dyn Fn(MouseEvent)>);
-            console.set_onmouseup(Some(onmouseup.as_ref().unchecked_ref()));
+            input.set_onmouseup(Some(onmouseup.as_ref().unchecked_ref()));
 
             mouse_closures.push(onmouseup);
         }
@@ -167,7 +155,6 @@ impl Backend {
         {
             let event_buffer = event_buffer.clone();
             let onkeydown = Closure::wrap(Box::new(move |e: KeyboardEvent| {
-                prevent_default(&e);
                 let key_str = e.key();
                 log::trace!("keydown: [{}]", key_str);
                 let key_str = key_str.as_bytes();
@@ -204,7 +191,6 @@ impl Backend {
             let target: &EventTarget = input.as_ref();
             let composition_text = composition_text.clone();
             let oncompositionupdate = Closure::wrap(Box::new(move |e: CompositionEvent| {
-                prevent_default(&e);
                 let data = e.data().unwrap();
 
                 log::trace!("compositionupdate: [{}]", data);
@@ -224,7 +210,6 @@ impl Backend {
             let event_buffer = event_buffer.clone();
             let composition_text = composition_text.clone();
             let oncompositionend = Closure::wrap(Box::new(move |e: CompositionEvent| {
-                prevent_default(&e);
                 let data = e.data().unwrap();
 
                 log::trace!("compositionend: [{}]", data);
@@ -245,7 +230,6 @@ impl Backend {
         }
 
         {
-            let input = input.clone();
             let hold_start = hold_start.clone();
             let event_buffer = event_buffer.clone();
             let ontouchstart = Closure::wrap(Box::new(move |e: TouchEvent| {
@@ -261,9 +245,6 @@ impl Backend {
                 if touches.length() == 0 {
                     return;
                 }
-                input.focus().unwrap();
-                input.select();
-                prevent_default(&e);
 
                 let touch = e.touches().get(0).unwrap();
                 hold_start.set(true);
@@ -273,7 +254,7 @@ impl Backend {
                     event: CursiveMouseEvent::Press(MouseButton::Left),
                 });
             }) as Box<dyn Fn(TouchEvent)>);
-            console.set_ontouchstart(Some(ontouchstart.as_ref().unchecked_ref()));
+            input.set_ontouchstart(Some(ontouchstart.as_ref().unchecked_ref()));
 
             touch_closures.push(ontouchstart);
         }
@@ -298,7 +279,6 @@ impl Backend {
                 }
 
                 let touch = e.touches().get(0).unwrap();
-                prevent_default(&e);
 
                 event_buffer.borrow_mut().push_back(Event::Mouse {
                     offset: Vec2::new(0, 0),
@@ -306,7 +286,7 @@ impl Backend {
                     event: CursiveMouseEvent::Hold(MouseButton::Left),
                 });
             }) as Box<dyn Fn(TouchEvent)>);
-            console.set_ontouchmove(Some(ontouchmove.as_ref().unchecked_ref()));
+            input.set_ontouchmove(Some(ontouchmove.as_ref().unchecked_ref()));
 
             touch_closures.push(ontouchmove);
         }
@@ -327,7 +307,6 @@ impl Backend {
                 }
 
                 let touch = e.touches().get(0).unwrap();
-                prevent_default(&e);
                 hold_start.set(false);
                 event_buffer.borrow_mut().push_back(Event::Mouse {
                     offset: Vec2::new(0, 0),
@@ -335,7 +314,7 @@ impl Backend {
                     event: CursiveMouseEvent::Release(MouseButton::Left),
                 });
             }) as Box<dyn Fn(TouchEvent)>);
-            console.set_ontouchend(Some(ontouchend.as_ref().unchecked_ref()));
+            input.set_ontouchend(Some(ontouchend.as_ref().unchecked_ref()));
 
             touch_closures.push(ontouchend);
         }
@@ -427,10 +406,6 @@ impl backend::Backend for Backend {
     fn unset_effect(&self, _effect: Effect) {
         self.effect.set(Effect::Simple);
     }
-}
-
-fn prevent_default(e: &impl AsRef<web_sys::Event>) {
-    e.as_ref().prevent_default();
 }
 
 fn get_mouse_botton(e: &MouseEvent) -> MouseButton {
