@@ -10,7 +10,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
     window, CanvasRenderingContext2d, CompositionEvent, ContextAttributes2d, EventTarget,
-    HtmlCanvasElement, HtmlInputElement, KeyboardEvent, MouseEvent, TouchEvent,
+    HtmlCanvasElement, HtmlElement, HtmlInputElement, KeyboardEvent, MouseEvent, TouchEvent,
 };
 
 struct ColorCache {
@@ -50,6 +50,7 @@ pub struct Backend {
 impl Backend {
     pub fn init(
         console: HtmlCanvasElement,
+        composition_text: HtmlElement,
         font_family: &str,
         font_size: f64,
     ) -> Result<Box<dyn backend::Backend>, JsValue> {
@@ -82,13 +83,13 @@ impl Backend {
         ctx.set_text_baseline("top");
 
         let height = font_size;
-        let width = ctx.measure_text("A")?.width();
+        let width = ctx.measure_text("M")?.width();
 
         let mut closures = Vec::with_capacity(1);
         let mut mouse_closures = Vec::with_capacity(3);
         let mut touch_closures = Vec::with_capacity(3);
         let mut keyboard_closures = Vec::with_capacity(1);
-        let mut composition_closures = Vec::with_capacity(1);
+        let mut composition_closures = Vec::with_capacity(2);
         let event_buffer = Rc::new(RefCell::new(VecDeque::with_capacity(300)));
         let hold_start = Rc::new(Cell::new(false));
 
@@ -201,7 +202,27 @@ impl Backend {
 
         {
             let target: &EventTarget = input.as_ref();
+            let composition_text = composition_text.clone();
+            let oncompositionupdate = Closure::wrap(Box::new(move |e: CompositionEvent| {
+                prevent_default(&e);
+                let data = e.data().unwrap();
+
+                log::trace!("compositionupdate: [{}]", data);
+
+                composition_text.set_inner_text(&data);
+            })
+                as Box<dyn Fn(CompositionEvent)>);
+            target.add_event_listener_with_callback(
+                "compositionupdate",
+                oncompositionupdate.as_ref().unchecked_ref(),
+            )?;
+
+            composition_closures.push(oncompositionupdate);
+        }
+        {
+            let target: &EventTarget = input.as_ref();
             let event_buffer = event_buffer.clone();
+            let composition_text = composition_text.clone();
             let oncompositionend = Closure::wrap(Box::new(move |e: CompositionEvent| {
                 prevent_default(&e);
                 let data = e.data().unwrap();
@@ -212,6 +233,8 @@ impl Backend {
                 for ch in data.chars() {
                     event_buffer.push_back(Event::Char(ch));
                 }
+
+                composition_text.set_inner_text("");
             }) as Box<dyn Fn(CompositionEvent)>);
             target.add_event_listener_with_callback(
                 "compositionend",
