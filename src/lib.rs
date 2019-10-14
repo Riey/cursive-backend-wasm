@@ -81,8 +81,9 @@ impl Backend {
         ctx.set_font(&format!("{}px {}", font_size, font_family));
         ctx.set_text_baseline("top");
 
-        let height = font_size;
-        let width = ctx.measure_text("M")?.width();
+        let height = font_size as usize;
+        let float_width = ctx.measure_text("M")?.width();
+        let width = float_width as usize;
 
         let mut closures = Vec::with_capacity(1);
         let mut mouse_closures = Vec::with_capacity(3);
@@ -106,14 +107,16 @@ impl Backend {
             let hold_start = hold_start.clone();
             let event_buffer = event_buffer.clone();
             let onmousedown = Closure::wrap(Box::new(move |e: MouseEvent| {
+                let x = e.x() as usize / width as usize;
+                let y = e.y() as usize / height as usize;
                 hold_start.set(true);
                 event_buffer.borrow_mut().push_back(Event::Mouse {
                     offset: Vec2::new(0, 0),
-                    position: Vec2::new(e.x() as usize, e.y() as usize),
+                    position: Vec2::new(x, y),
                     event: CursiveMouseEvent::Press(get_mouse_botton(&e)),
                 });
             }) as Box<dyn Fn(MouseEvent)>);
-            input.set_onmousedown(Some(onmousedown.as_ref().unchecked_ref()));
+            container.set_onmousedown(Some(onmousedown.as_ref().unchecked_ref()));
 
             mouse_closures.push(onmousedown);
         }
@@ -125,13 +128,15 @@ impl Backend {
                 if !hold_start.get() {
                     return;
                 }
+                let x = e.x() as usize / width as usize;
+                let y = e.y() as usize / height as usize;
                 event_buffer.borrow_mut().push_back(Event::Mouse {
                     offset: Vec2::new(0, 0),
-                    position: Vec2::new(e.x() as usize, e.y() as usize),
+                    position: Vec2::new(x, y),
                     event: CursiveMouseEvent::Hold(get_mouse_botton(&e)),
                 });
             }) as Box<dyn Fn(MouseEvent)>);
-            input.set_onmousemove(Some(onmousehold.as_ref().unchecked_ref()));
+            container.set_onmousemove(Some(onmousehold.as_ref().unchecked_ref()));
 
             mouse_closures.push(onmousehold);
         }
@@ -140,14 +145,16 @@ impl Backend {
             let hold_start = hold_start.clone();
             let event_buffer = event_buffer.clone();
             let onmouseup = Closure::wrap(Box::new(move |e: MouseEvent| {
+                let x = e.x() as usize / width as usize;
+                let y = e.y() as usize / height as usize;
                 hold_start.set(false);
                 event_buffer.borrow_mut().push_back(Event::Mouse {
                     offset: Vec2::new(0, 0),
-                    position: Vec2::new(e.x() as usize, e.y() as usize),
+                    position: Vec2::new(x, y),
                     event: CursiveMouseEvent::Release(get_mouse_botton(&e)),
                 });
             }) as Box<dyn Fn(MouseEvent)>);
-            input.set_onmouseup(Some(onmouseup.as_ref().unchecked_ref()));
+            container.set_onmouseup(Some(onmouseup.as_ref().unchecked_ref()));
 
             mouse_closures.push(onmouseup);
         }
@@ -247,14 +254,16 @@ impl Backend {
                 }
 
                 let touch = e.touches().get(0).unwrap();
+                let x = touch.client_x() as usize / width;
+                let y = touch.client_y() as usize / height;
                 hold_start.set(true);
                 event_buffer.borrow_mut().push_back(Event::Mouse {
                     offset: Vec2::new(0, 0),
-                    position: Vec2::new(touch.client_x() as usize, touch.client_y() as usize),
+                    position: Vec2::new(x, y),
                     event: CursiveMouseEvent::Press(MouseButton::Left),
                 });
             }) as Box<dyn Fn(TouchEvent)>);
-            input.set_ontouchstart(Some(ontouchstart.as_ref().unchecked_ref()));
+            console.set_ontouchstart(Some(ontouchstart.as_ref().unchecked_ref()));
 
             touch_closures.push(ontouchstart);
         }
@@ -279,14 +288,18 @@ impl Backend {
                 }
 
                 let touch = e.touches().get(0).unwrap();
+                let x = touch.client_x() as usize / width as usize;
+                let y = touch.client_y() as usize / height as usize;
+
+                log::trace!("touchmove ({}, {})", x, y);
 
                 event_buffer.borrow_mut().push_back(Event::Mouse {
                     offset: Vec2::new(0, 0),
-                    position: Vec2::new(touch.client_x() as usize, touch.client_y() as usize),
+                    position: Vec2::new(x, y),
                     event: CursiveMouseEvent::Hold(MouseButton::Left),
                 });
             }) as Box<dyn Fn(TouchEvent)>);
-            input.set_ontouchmove(Some(ontouchmove.as_ref().unchecked_ref()));
+            console.set_ontouchmove(Some(ontouchmove.as_ref().unchecked_ref()));
 
             touch_closures.push(ontouchmove);
         }
@@ -307,14 +320,17 @@ impl Backend {
                 }
 
                 let touch = e.touches().get(0).unwrap();
+                let x = touch.client_x() as usize / width as usize;
+                let y = touch.client_y() as usize / height as usize;
+
                 hold_start.set(false);
                 event_buffer.borrow_mut().push_back(Event::Mouse {
                     offset: Vec2::new(0, 0),
-                    position: Vec2::new(touch.client_x() as usize, touch.client_y() as usize),
+                    position: Vec2::new(x, y),
                     event: CursiveMouseEvent::Release(MouseButton::Left),
                 });
             }) as Box<dyn Fn(TouchEvent)>);
-            input.set_ontouchend(Some(ontouchend.as_ref().unchecked_ref()));
+            console.set_ontouchend(Some(ontouchend.as_ref().unchecked_ref()));
 
             touch_closures.push(ontouchend);
         }
@@ -323,8 +339,8 @@ impl Backend {
             console,
             ctx,
             _input: input,
-            font_width: width,
-            font_height: height,
+            font_width: float_width,
+            font_height: font_size,
             event_buffer,
             color: Cell::new(ColorPair {
                 front: Color::TerminalDefault,
