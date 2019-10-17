@@ -7,11 +7,33 @@ edition = "2018"
 [lib]
 crate-type = ["rlib"]
 
+[features]
+default = ["canvas", "worker", "composition"]
+composition = [
+    "web-sys/CompositionEvent",
+    "web-sys/EventTarget",
+]
+canvas = [
+    "web-sys/CanvasRenderingContext2d",
+    "web-sys/ContextAttributes2d",
+    "web-sys/TextMetrics",
+]
+worker = [
+    "web-sys/OffscreenCanvas",
+    "web-sys/WebGlBuffer",
+    "web-sys/WebGlRenderingContext",
+    "web-sys/WebGlProgram",
+    "web-sys/WebGlShader",
+]
+
 [dependencies]
 cursive = { git = "https://github.com/Riey/cursive", branch = "wasm", default-features = false }
 wasm-bindgen = "0.2.51"
 unicode-width = "0.1.6"
 log = "0.4.8"
+glyph_brush = "0.6.0"
+arraydeque = "0.4.5"
+num-traits = { version = "0.2.8", features = ["i128"] }
 
 [dependencies.web-sys]
 version = "0.3.28"
@@ -21,17 +43,12 @@ features = [
     "Node",
     "Element",
     "Event",
-    "EventTarget",
     "HtmlElement",
     "HtmlCanvasElement",
-    "CanvasRenderingContext2d",
-    "ContextAttributes2d",
-    "TextMetrics",
     "HtmlDivElement",
     "HtmlSpanElement",
     "HtmlInputElement",
     "CssStyleDeclaration",
-    "CompositionEvent",
     "MouseEvent",
     "TouchEvent",
     "TouchList",
