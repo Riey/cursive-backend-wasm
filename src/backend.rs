@@ -58,9 +58,10 @@ impl Backend {
 impl backend::Backend for Backend {
     fn poll_event(&mut self) -> Option<Event> {
         self.shared
-            .try_lock()
+            .event_buffer
+            .lock()
             .unwrap()
-            .dequeue()
+            .pop_front()
             .map(|e| e.into_event(self.font_width as _, self.font_height as _))
     }
 
@@ -103,12 +104,36 @@ impl backend::Backend for Backend {
     }
 }
 
+fn base_to_dark_gl_color(color: BaseColor) -> [f32; 3] {
+    match color {
+        BaseColor::Black => [0.0, 0.0, 0.0],
+        BaseColor::Blue => [0.0, 0.0, 1.0],
+        BaseColor::Cyan => [0.0, 1.0, 1.0],
+        BaseColor::Yellow => [1.0, 1.0, 0.0],
+        BaseColor::Green => [0.0, 1.0, 0.0],
+        BaseColor::Magenta => [1.0, 0.0, 1.0],
+        BaseColor::White => [1.0, 1.0, 1.0],
+        BaseColor::Red => [1.0, 0.0, 0.0],
+    }
+}
+
+fn base_to_light_gl_color(color: BaseColor) -> [f32; 3] {
+    match color {
+        BaseColor::Black => [0.0, 0.0, 0.0],
+        BaseColor::Blue => [0.0, 0.0, 1.0],
+        BaseColor::Cyan => [0.0, 1.0, 1.0],
+        BaseColor::Yellow => [1.0, 1.0, 0.0],
+        BaseColor::Green => [0.0, 1.0, 0.0],
+        BaseColor::Magenta => [1.0, 0.0, 1.0],
+        BaseColor::White => [1.0, 1.0, 1.0],
+        BaseColor::Red => [1.0, 0.0, 0.0],
+    }
+}
+
 fn to_gl_color(color: Color) -> [f32; 3] {
     match color {
-        Color::Dark(BaseColor::Black) => [0.0, 0.0, 0.0],
-        Color::Dark(BaseColor::Blue) => [0.0, 0.0, 0.9],
-        Color::Dark(BaseColor::Cyan) => [0.0, 0.9, 0.9],
-        Color::Dark(BaseColor::Yellow) => [0.9, 0.9, 0.0],
+        Color::Dark(color) => base_to_dark_gl_color(color),
+        Color::Light(color) => base_to_light_gl_color(color),
         Color::RgbLowRes(r, g, b) => [r as f32 / 6.0, g as f32 / 6.0, b as f32 / 6.0],
         Color::Rgb(r, g, b) => [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0],
         _ => unimplemented!(),

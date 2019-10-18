@@ -8,9 +8,7 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Arc;
-use unicode_width::UnicodeWidthStr;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen::JsCast;
 use web_sys::{HtmlCanvasElement, HtmlDivElement, HtmlElement, HtmlInputElement};
 
 use crate::event_handler::EventHandler;
@@ -32,9 +30,9 @@ impl Frontend {
             return;
         }
 
-        if let Ok(mut shared) = self.shared.try_lock() {
+        if let Ok(mut shared) = self.shared.event_buffer.try_lock() {
             for e in buffer.drain(..) {
-                shared.enqueue(e).unwrap();
+                shared.push_back(e);
             }
         }
     }
