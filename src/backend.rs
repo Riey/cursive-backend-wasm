@@ -3,12 +3,15 @@ use cursive::{backend, Vec2};
 use std::cell::Cell;
 use std::sync::Arc;
 
-use crate::event_handler::WasmEvent;
 use crate::shared::Shared;
 
 use cursive::theme::{BaseColor, Color, ColorPair, Effect};
+use gl::types::*;
+use glyph_brush::{rusttype::PositionedGlyph, GlyphBrush, GlyphBrushBuilder};
 use wasm_bindgen::JsCast;
 use web_sys::{OffscreenCanvas, WebGlRenderingContext};
+
+type Vertex = [GLfloat; 13];
 
 pub struct Backend {
     shared: Arc<Shared>,
@@ -19,7 +22,7 @@ pub struct Backend {
     ctx: WebGlRenderingContext,
     font_width: f32,
     font_height: f32,
-    font: Vec<u8>,
+    brush: GlyphBrush<'static, Vertex>,
 }
 
 impl Backend {
@@ -37,6 +40,9 @@ impl Backend {
             .unwrap();
         // TODO: measuring text width
         let font_width = font_height * 0.8;
+        let brush = GlyphBrushBuilder::using_font_bytes(font)
+            .gpu_cache_align_4x4(true)
+            .build::<Vertex>();
 
         Box::new(Self {
             shared,
@@ -50,19 +56,24 @@ impl Backend {
             ctx,
             font_height,
             font_width,
-            font,
+            brush,
         }) as Box<_>
     }
 }
 
 impl backend::Backend for Backend {
     fn poll_event(&mut self) -> Option<Event> {
-        self.shared
+        let e = self
+            .shared
             .event_buffer
             .lock()
             .unwrap()
             .pop_front()
-            .map(|e| e.into_event(self.font_width as _, self.font_height as _))
+            .map(|e| e.into_event(self.font_width as _, self.font_height as _));
+
+        log::trace!("Get event {:?}", e);
+
+        e
     }
 
     fn finish(&mut self) {}

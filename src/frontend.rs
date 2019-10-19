@@ -1,12 +1,4 @@
 use crate::shared::Shared;
-use cursive::backend;
-use cursive::event::{Event, Key, MouseButton, MouseEvent as CursiveMouseEvent};
-use cursive::theme::{BaseColor, Color, ColorPair, Effect};
-use cursive::Vec2;
-use std::cell::{Cell, RefCell};
-use std::collections::VecDeque;
-use std::rc::Rc;
-use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 use web_sys::{HtmlCanvasElement, HtmlDivElement, HtmlElement, HtmlInputElement};
