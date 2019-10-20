@@ -8,7 +8,7 @@ edition = "2018"
 crate-type = ["rlib"]
 
 [features]
-default = ["canvas", "worker", "composition"]
+default = ["canvas", "composition", "worker-2d"]
 composition = [
     "web-sys/CompositionEvent",
     "web-sys/EventTarget",
@@ -24,6 +24,13 @@ worker = [
     "web-sys/WebGlRenderingContext",
     "web-sys/WebGlProgram",
     "web-sys/WebGlShader",
+    "web-sys/WebGlTexture",
+]
+worker-2d = [
+    "web-sys/OffscreenCanvas",
+    "web-sys/CanvasRenderingContext2d",
+    "web-sys/ContextAttributes2d",
+    "web-sys/TextMetrics",
 ]
 
 [dependencies]
@@ -33,7 +40,6 @@ unicode-width = "0.1.6"
 log = "0.4.8"
 glyph_brush = "0.6.0"
 num-traits = { version = "0.2.8", features = ["i128"] }
-gl = "0.14.0"
 
 [dependencies.web-sys]
 version = "0.3.28"
