@@ -11,7 +11,7 @@ use web_sys::{
     HtmlInputElement,
 };
 
-use crate::event_handler::EventHandler;
+use crate::event_handler::{EventHandler, WasmEvent};
 
 struct ColorCache {
     color: JsValue,
@@ -29,6 +29,7 @@ impl Default for ColorCache {
 
 pub struct Backend {
     event_handler: EventHandler,
+    event_buffer: Vec<WasmEvent>,
     color: Cell<ColorPair>,
     color_cache: RefCell<ColorCache>,
     cur_bg_color: RefCell<JsValue>,
@@ -69,6 +70,7 @@ impl Backend {
             font_width,
             font_height: font_size,
             event_handler,
+            event_buffer: Vec::with_capacity(300),
             color: Cell::new(ColorPair {
                 front: Color::TerminalDefault,
                 back: Color::TerminalDefault,
@@ -82,10 +84,18 @@ impl Backend {
 
 impl backend::Backend for Backend {
     fn poll_event(&mut self) -> Option<Event> {
-        self.event_handler
-            .event_buffer()
-            .borrow_mut()
-            .pop_front()
+        if self.event_buffer.is_empty() {
+            self.event_buffer.extend(
+                self.event_handler
+                    .event_buffer()
+                    .borrow_mut()
+                    .drain(..)
+                    .rev(),
+            );
+        }
+
+        self.event_buffer
+            .pop()
             .map(|e| e.into_event(self.font_width as usize, self.font_height as usize))
     }
 

@@ -1,7 +1,6 @@
 use cursive::event::{Event, Key, MouseButton, MouseEvent as CursiveMouseEvent};
 use cursive::Vec2;
 use std::cell::{Cell, RefCell};
-use std::collections::VecDeque;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -20,7 +19,7 @@ pub enum WasmEvent {
     // TODO: wheel event
     Key(Key),
     Char(char),
-    Resize,
+    Resize(u32, u32),
 }
 
 impl WasmEvent {
@@ -43,13 +42,13 @@ impl WasmEvent {
             },
             WasmEvent::Key(key) => Event::Key(key),
             WasmEvent::Char(ch) => Event::Char(ch),
-            WasmEvent::Resize => Event::WindowResize,
+            WasmEvent::Resize(_, _) => Event::WindowResize,
         }
     }
 }
 
 pub struct EventHandler {
-    event_buffer: Rc<RefCell<VecDeque<WasmEvent>>>,
+    event_buffer: Rc<RefCell<Vec<WasmEvent>>>,
     container: HtmlDivElement,
     console: HtmlCanvasElement,
     input: HtmlInputElement,
@@ -95,7 +94,7 @@ impl Drop for EventHandler {
 }
 
 impl EventHandler {
-    pub fn event_buffer(&self) -> &RefCell<VecDeque<WasmEvent>> {
+    pub fn event_buffer(&self) -> &RefCell<Vec<WasmEvent>> {
         &self.event_buffer
     }
 
@@ -109,14 +108,22 @@ impl EventHandler {
         let mut mouse_closures = Vec::with_capacity(3);
         let mut touch_closures = Vec::with_capacity(3);
         let mut keyboard_closures = Vec::with_capacity(1);
-        let event_buffer = Rc::new(RefCell::new(VecDeque::with_capacity(300)));
+        let event_buffer = Rc::new(RefCell::new(Vec::with_capacity(300)));
         let hold_start = Rc::new(Cell::new(false));
 
         {
-            let console = console.clone();
+            use web_sys::Element;
+            let console2 = console.clone();
             let event_buffer = event_buffer.clone();
             let onresize = Closure::wrap(Box::new(move || {
-                event_buffer.borrow_mut().push_back(WasmEvent::Resize);
+                let client: &Element = console2.as_ref();
+                let width = client.client_width() as u32;
+                let height = client.client_height() as u32;
+                console2.set_width(width);
+                console2.set_height(height);
+                event_buffer
+                    .borrow_mut()
+                    .push(WasmEvent::Resize(width, height));
             }) as Box<dyn Fn()>);
             console.set_onresize(Some(onresize.as_ref().unchecked_ref()));
 
@@ -128,7 +135,7 @@ impl EventHandler {
             let event_buffer = event_buffer.clone();
             let onmousedown = Closure::wrap(Box::new(move |e: MouseEvent| {
                 hold_start.set(true);
-                event_buffer.borrow_mut().push_back(WasmEvent::MouseDown(
+                event_buffer.borrow_mut().push(WasmEvent::MouseDown(
                     Vec2::new(e.x() as usize, e.y() as usize),
                     get_mouse_botton(&e),
                 ));
@@ -145,7 +152,7 @@ impl EventHandler {
                 if !hold_start.get() {
                     return;
                 }
-                event_buffer.borrow_mut().push_back(WasmEvent::MouseMove(
+                event_buffer.borrow_mut().push(WasmEvent::MouseMove(
                     Vec2::new(e.x() as usize, e.y() as usize),
                     get_mouse_botton(&e),
                 ));
@@ -160,7 +167,7 @@ impl EventHandler {
             let event_buffer = event_buffer.clone();
             let onmouseup = Closure::wrap(Box::new(move |e: MouseEvent| {
                 hold_start.set(false);
-                event_buffer.borrow_mut().push_back(WasmEvent::MouseUp(
+                event_buffer.borrow_mut().push(WasmEvent::MouseUp(
                     Vec2::new(e.x() as usize, e.y() as usize),
                     get_mouse_botton(&e),
                 ));
@@ -193,11 +200,11 @@ impl EventHandler {
 
                 if let Some(key) = key {
                     //TODO: alt ctrl shift meta
-                    event_buffer.borrow_mut().push_back(WasmEvent::Key(key));
+                    event_buffer.borrow_mut().push(WasmEvent::Key(key));
                 } else if key_str.len() == 1 {
                     event_buffer
                         .borrow_mut()
-                        .push_back(WasmEvent::Char(key_str[0] as char));
+                        .push(WasmEvent::Char(key_str[0] as char));
                 };
             }) as Box<dyn Fn(KeyboardEvent)>);
             input.set_onkeydown(Some(onkeydown.as_ref().unchecked_ref()));
@@ -224,7 +231,7 @@ impl EventHandler {
 
                 let touch = e.touches().get(0).unwrap();
                 hold_start.set(true);
-                event_buffer.borrow_mut().push_back(WasmEvent::MouseDown(
+                event_buffer.borrow_mut().push(WasmEvent::MouseDown(
                     Vec2::new(touch.client_x() as usize, touch.client_y() as usize),
                     MouseButton::Left,
                 ));
@@ -254,7 +261,7 @@ impl EventHandler {
                 }
 
                 let touch = e.touches().get(0).unwrap();
-                event_buffer.borrow_mut().push_back(WasmEvent::MouseMove(
+                event_buffer.borrow_mut().push(WasmEvent::MouseMove(
                     Vec2::new(touch.client_x() as usize, touch.client_y() as usize),
                     MouseButton::Left,
                 ));
@@ -281,7 +288,7 @@ impl EventHandler {
 
                 let touch = e.touches().get(0).unwrap();
                 hold_start.set(false);
-                event_buffer.borrow_mut().push_back(WasmEvent::MouseUp(
+                event_buffer.borrow_mut().push(WasmEvent::MouseUp(
                     Vec2::new(touch.client_x() as usize, touch.client_y() as usize),
                     MouseButton::Left,
                 ));
@@ -322,7 +329,7 @@ impl EventHandler {
 
                 let mut event_buffer = event_buffer.borrow_mut();
                 for ch in data.chars() {
-                    event_buffer.push_back(WasmEvent::Char(ch));
+                    event_buffer.push(WasmEvent::Char(ch));
                 }
 
                 composition_text.set_inner_text("");

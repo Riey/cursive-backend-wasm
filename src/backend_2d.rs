@@ -3,15 +3,14 @@ use cursive::event::Event;
 use cursive::theme::{BaseColor, Color, ColorPair, Effect};
 use cursive::Vec2;
 use std::cell::{Cell, RefCell};
-use std::sync::Arc;
 use unicode_width::UnicodeWidthStr;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
-    CanvasRenderingContext2d, ContextAttributes2d, HtmlDivElement, HtmlElement, HtmlInputElement,
-    OffscreenCanvas,
+    CanvasRenderingContext2d, ContextAttributes2d, DedicatedWorkerGlobalScope, OffscreenCanvas,
 };
 
+use crate::event_handler::WasmEvent;
 use crate::shared::Shared;
 
 struct ColorCache {
@@ -29,7 +28,8 @@ impl Default for ColorCache {
 }
 
 pub struct Backend {
-    shared: Arc<Shared>,
+    shared: Shared,
+    event_buffer: Vec<WasmEvent>,
     color: Cell<ColorPair>,
     color_cache: RefCell<ColorCache>,
     cur_bg_color: RefCell<JsValue>,
@@ -39,6 +39,7 @@ pub struct Backend {
     font_height: f64,
     console: OffscreenCanvas,
     ctx: CanvasRenderingContext2d,
+    global: DedicatedWorkerGlobalScope,
 }
 
 impl Backend {
@@ -46,7 +47,7 @@ impl Backend {
         console: OffscreenCanvas,
         font_family: &str,
         font_size: f64,
-        shared: Arc<Shared>,
+        shared: Shared,
     ) -> Result<Box<dyn backend::Backend>, JsValue> {
         let ctx: CanvasRenderingContext2d = console
             .get_context_with_context_options(
@@ -54,7 +55,8 @@ impl Backend {
                 ContextAttributes2d::new().alpha(false).as_ref(),
             )?
             .ok_or("Can't get CanvasRenderingContext2d")?
-            .dyn_into()?;
+            .unchecked_into();
+
         ctx.set_font(&format!("{}px {}", font_size, font_family));
         ctx.set_text_baseline("top");
 
@@ -62,6 +64,7 @@ impl Backend {
 
         Ok(Box::new(Self {
             shared,
+            event_buffer: Vec::with_capacity(100),
             console,
             ctx,
             font_width,
@@ -73,18 +76,23 @@ impl Backend {
             cur_bg_color: RefCell::new(JsValue::UNDEFINED),
             color_cache: RefCell::default(),
             effect: Cell::new(Effect::Simple),
+            global: js_sys::global().dyn_into()?,
         }))
     }
 }
 
 impl backend::Backend for Backend {
     fn poll_event(&mut self) -> Option<Event> {
-        self.shared
-            .event_buffer
-            .lock()
-            .unwrap()
-            .pop_front()
-            .map(|e| e.into_event(self.font_width as usize, self.font_height as usize))
+        if self.event_buffer.is_empty() {
+            self.shared.pop(&mut self.event_buffer);
+        }
+        self.event_buffer.pop().map(|e| {
+            if let WasmEvent::Resize(x, y) = e {
+                self.console.set_width(x);
+                self.console.set_height(y);
+            }
+            e.into_event(self.font_width as usize, self.font_height as usize)
+        })
     }
 
     fn clear(&self, color: Color) {
@@ -113,7 +121,20 @@ impl backend::Backend for Backend {
         self.ctx.fill_text(text, x, y).unwrap();
     }
 
-    fn refresh(&mut self) {}
+    fn refresh(&mut self) {
+        let image = self.console.transfer_to_image_bitmap().unwrap();
+        self.global
+            .post_message_with_transfer(image.as_ref(), image.as_ref())
+            .unwrap();
+
+        self.ctx.set_fill_style(&self.cur_bg_color.borrow());
+        self.ctx.fill_rect(
+            0.,
+            0.,
+            self.console.width() as _,
+            self.console.height() as _,
+        );
+    }
 
     fn screen_size(&self) -> Vec2 {
         Vec2::new(
