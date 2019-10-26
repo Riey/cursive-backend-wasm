@@ -107,8 +107,8 @@ impl Backend {
             let hold_start = hold_start.clone();
             let event_buffer = event_buffer.clone();
             let onmousedown = Closure::wrap(Box::new(move |e: MouseEvent| {
-                let x = e.x() as usize / width as usize;
-                let y = e.y() as usize / height as usize;
+                let x = e.offset_x() as usize / width as usize;
+                let y = e.offset_y() as usize / height as usize;
                 hold_start.set(true);
                 event_buffer.borrow_mut().push_back(Event::Mouse {
                     offset: Vec2::new(0, 0),
@@ -128,8 +128,8 @@ impl Backend {
                 if !hold_start.get() {
                     return;
                 }
-                let x = e.x() as usize / width as usize;
-                let y = e.y() as usize / height as usize;
+                let x = e.offset_x() as usize / width as usize;
+                let y = e.offset_y() as usize / height as usize;
                 event_buffer.borrow_mut().push_back(Event::Mouse {
                     offset: Vec2::new(0, 0),
                     position: Vec2::new(x, y),
@@ -145,8 +145,8 @@ impl Backend {
             let hold_start = hold_start.clone();
             let event_buffer = event_buffer.clone();
             let onmouseup = Closure::wrap(Box::new(move |e: MouseEvent| {
-                let x = e.x() as usize / width as usize;
-                let y = e.y() as usize / height as usize;
+                let x = e.offset_x() as usize / width as usize;
+                let y = e.offset_y() as usize / height as usize;
                 hold_start.set(false);
                 event_buffer.borrow_mut().push_back(Event::Mouse {
                     offset: Vec2::new(0, 0),
@@ -263,7 +263,7 @@ impl Backend {
                     event: CursiveMouseEvent::Press(MouseButton::Left),
                 });
             }) as Box<dyn Fn(TouchEvent)>);
-            console.set_ontouchstart(Some(ontouchstart.as_ref().unchecked_ref()));
+            input.set_ontouchstart(Some(ontouchstart.as_ref().unchecked_ref()));
 
             touch_closures.push(ontouchstart);
         }
@@ -299,7 +299,7 @@ impl Backend {
                     event: CursiveMouseEvent::Hold(MouseButton::Left),
                 });
             }) as Box<dyn Fn(TouchEvent)>);
-            console.set_ontouchmove(Some(ontouchmove.as_ref().unchecked_ref()));
+            input.set_ontouchmove(Some(ontouchmove.as_ref().unchecked_ref()));
 
             touch_closures.push(ontouchmove);
         }
@@ -330,7 +330,7 @@ impl Backend {
                     event: CursiveMouseEvent::Release(MouseButton::Left),
                 });
             }) as Box<dyn Fn(TouchEvent)>);
-            console.set_ontouchend(Some(ontouchend.as_ref().unchecked_ref()));
+            input.set_ontouchend(Some(ontouchend.as_ref().unchecked_ref()));
 
             touch_closures.push(ontouchend);
         }
@@ -466,7 +466,7 @@ fn rgb_to_html(r: u8, g: u8, b: u8) -> String {
 }
 
 fn low_res_to_high(c: u8) -> u8 {
-    (c / 5 * 256) as u8
+    (c * 51) as u8
 }
 
 fn color_to_html(color: Color) -> String {
