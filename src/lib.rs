@@ -466,7 +466,7 @@ fn rgb_to_html(r: u8, g: u8, b: u8) -> String {
 }
 
 fn low_res_to_high(c: u8) -> u8 {
-    (c as u32 * 256 / 6) as u8
+    (c / 5 * 256) as u8
 }
 
 fn color_to_html(color: Color) -> String {
