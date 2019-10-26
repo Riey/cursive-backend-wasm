@@ -179,6 +179,7 @@ impl EventHandler {
 
         {
             let event_buffer = event_buffer.clone();
+            let input2 = input.clone();
             let onkeydown = Closure::wrap(Box::new(move |e: KeyboardEvent| {
                 let key_str = e.key();
                 log::trace!("keydown: [{}]", key_str);
@@ -206,6 +207,8 @@ impl EventHandler {
                         .borrow_mut()
                         .push(WasmEvent::Char(key_str[0] as char));
                 };
+
+                input2.set_value("");
             }) as Box<dyn Fn(KeyboardEvent)>);
             input.set_onkeydown(Some(onkeydown.as_ref().unchecked_ref()));
 

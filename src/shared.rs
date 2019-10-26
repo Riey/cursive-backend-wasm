@@ -5,9 +5,8 @@ use js_sys::SharedArrayBuffer;
 use crate::event_handler::WasmEvent;
 
 const LOCK_INDEX: u32 = 0;
-const DRAW_INDEX: u32 = 1;
-const LENGTH_INDEX: u32 = 2;
-const DATA_INDEX: u32 = 3;
+const LENGTH_INDEX: u32 = 1;
+const DATA_INDEX: u32 = 2;
 use std::mem::size_of;
 const WASM_EVENT_SIZE: usize = size_of::<WasmEvent>() / size_of::<i32>();
 
